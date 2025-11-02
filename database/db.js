@@ -6,8 +6,8 @@ const path = require('path');
 let sequelize;
 
 console.log(`🗄️ Database configuration: ${config.DATABASE_DIALECT}`);
+console.log(`🔍 DATABASE_URL available: ${!!config.DATABASE_URL}`);
 
-// Check if we have DATABASE_URL for PostgreSQL
 if (config.DATABASE_URL) {
   console.log('🔄 Configuring PostgreSQL database...');
   console.log('✅ DATABASE_URL found - using PostgreSQL (data will persist)');
@@ -70,7 +70,7 @@ const connectDB = async () => {
     console.log('🔄 Connecting to database...');
     await sequelize.authenticate();
     
-    if (config.DATABASE_URL) {
+    if (process.env.DATABASE_URL) {  // Use process.env.DATABASE_URL here too
       console.log('✅ PostgreSQL database connected successfully');
       console.log('✅ Your mini-bots will persist across deployments');
     } else {
@@ -87,7 +87,7 @@ const connectDB = async () => {
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
     
-    if (config.DATABASE_URL) {
+    if (process.env.DATABASE_URL) {  // Use process.env.DATABASE_URL here too
       console.error('💡 PostgreSQL connection failed:');
       console.error('   - Check DATABASE_URL format');
       console.error('   - Verify database is accessible');

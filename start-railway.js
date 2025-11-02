@@ -1,32 +1,33 @@
-// start-railway.js - Updated for Railway
+// start-railway.js - Updated to use config
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('==================================');
 
-// Check critical environment variables
+// Load config FIRST
+const config = require('./config/environment');
+
+// Now check critical environment variables through config
 console.log('🔍 Environment Check:');
 
-if (!process.env.DATABASE_URL) {
+if (config.DATABASE_URL) {
+  console.log('✅ DATABASE_URL is set - PostgreSQL connected');
+  console.log('✅ Mini-bots will persist across deployments');
+} else {
   console.log('❌ DATABASE_URL not set - PostgreSQL database not connected');
   console.log('🚨 CRITICAL: Mini-bots will NOT persist across deployments!');
   console.log('💡 Solution: Add PostgreSQL database in Railway Dashboard');
   console.log('   Railway → New → Database → PostgreSQL');
-} else {
-  console.log('✅ DATABASE_URL is set - PostgreSQL connected');
-  console.log('✅ Mini-bots will persist across deployments');
 }
 
-if (!process.env.BOT_TOKEN) {
+if (!config.BOT_TOKEN) {
   console.log('❌ BOT_TOKEN not set');
-  process.env.BOT_TOKEN = '7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI';
-  console.log('⚠️  Using default BOT_TOKEN');
+  // Don't set defaults here - let the config handle it
 } else {
   console.log('✅ BOT_TOKEN is set');
 }
 
-if (!process.env.ENCRYPTION_KEY) {
+if (!config.ENCRYPTION_KEY) {
   console.log('❌ ENCRYPTION_KEY not set');
-  process.env.ENCRYPTION_KEY = '7a89253d1236bb589c247a236f676401cb681fcf2d45345efe38180ce70abf23';
-  console.log('⚠️  Using default ENCRYPTION_KEY');
+  // Don't set defaults here - let the config handle it
 } else {
   console.log('✅ ENCRYPTION_KEY is set');
 }
