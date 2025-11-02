@@ -331,90 +331,93 @@ class MetaBotCreator {
     console.log('✅ Admin callbacks registered');
   }
   
-async initialize() {
-  try {
-    console.log('🔄 Initializing MetaBot Creator...');
-    
-    // Connect to database
-    console.log('🗄️ Connecting to database...');
-    await connectDB();
-    console.log('✅ Database connected');
-    
-    // 🚨 CRITICAL FIX: REMOVE THIS CLEANUP - It's deleting your active bots!
-    // console.log('🔄 Cleaning up any existing mini-bot instances...');
-    // const activeBots = Array.from(MiniBotManager.activeBots.keys());
-    // for (const botId of activeBots) {
-    //   await MiniBotManager.stopBot(botId);
-    // }
-    // console.log(`✅ Cleared ${activeBots.length} existing bot instances`);
-    
-    // ✅ NEW APPROACH: Only initialize bots that aren't already active
-    console.log('🤖 Initializing mini-bots...');
-    
-    // Initialize mini-bots IMMEDIATELY without delay
+  async initialize() {
     try {
-      const successCount = await MiniBotManager.initializeAllBots();
-      if (successCount > 0) {
-        console.log(`✅ ${successCount} mini-bots initialized successfully`);
-      } else {
-        console.log('ℹ️ No active mini-bots found to initialize');
-      }
-    } catch (error) {
-      console.error('❌ Mini-bot initialization error:', error);
-      // Retry after 3 seconds
-      setTimeout(async () => {
-        try {
-          console.log('🔄 Retrying mini-bot initialization...');
-          const retryCount = await MiniBotManager.initializeAllBots();
-          console.log(`✅ Retry completed: ${retryCount} bots initialized`);
-        } catch (retryError) {
-          console.error('❌ Mini-bot retry failed:', retryError);
-        }
-      }, 3000);
-    }
-    
-    console.log('✅ MetaBot Creator initialized successfully');
-  } catch (error) {
-    console.error('❌ Initialization failed:', error);
-    process.exit(1);
-  }
-}
-  
-start() {
-  console.log('🚀 Starting main bot...');
-  
-  this.bot.launch()
-    .then(() => {
-      console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
-      console.log('========================================');
+      console.log('🔄 Initializing MetaBot Creator...');
       
-      // ✅ NEW: Start persistence monitoring
-      this.startPersistenceMonitoring();
-    })
-    .catch(error => {
-      console.error('❌ Failed to start main bot:', error);
-      console.log('💡 Check your BOT_TOKEN in .env file');
-      process.exit(1);
-    });
-  
-  // Enable graceful stop
-  process.once('SIGINT', () => this.shutdown());
-  process.once('SIGTERM', () => this.shutdown());
-}
-
-// ✅ NEW: Add persistence monitoring
-startPersistenceMonitoring() {
-  // Check every 2 minutes if any bots need to be reinitialized
-  setInterval(async () => {
-    try {
-      await MiniBotManager.ensureBotPersistence();
+      // Connect to database
+      console.log('🗄️ Connecting to database...');
+      await connectDB();
+      console.log('✅ Database connected');
+      
+      // ✅ NEW APPROACH: Only initialize bots that aren't already active
+      console.log('🤖 Initializing mini-bots...');
+      
+      // Initialize mini-bots IMMEDIATELY without delay
+      try {
+        const successCount = await MiniBotManager.initializeAllBots();
+        if (successCount > 0) {
+          console.log(`✅ ${successCount} mini-bots initialized successfully`);
+        } else {
+          console.log('ℹ️ No active mini-bots found to initialize');
+        }
+      } catch (error) {
+        console.error('❌ Mini-bot initialization error:', error);
+        // Retry after 3 seconds
+        setTimeout(async () => {
+          try {
+            console.log('🔄 Retrying mini-bot initialization...');
+            const retryCount = await MiniBotManager.initializeAllBots();
+            console.log(`✅ Retry completed: ${retryCount} bots initialized`);
+          } catch (retryError) {
+            console.error('❌ Mini-bot retry failed:', retryError);
+          }
+        }, 3000);
+      }
+      
+      console.log('✅ MetaBot Creator initialized successfully');
     } catch (error) {
-      console.error('❌ Persistence monitoring error:', error);
+      console.error('❌ Initialization failed:', error);
+      process.exit(1);
     }
-  }, 2 * 60 * 1000); // 2 minutes
+  }
   
-  console.log('🔍 Bot persistence monitoring started');
-}
+  start() {
+    console.log('🚀 Starting main bot...');
+    
+    this.bot.launch()
+      .then(() => {
+        console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
+        console.log('========================================');
+        
+        // ✅ NEW: Start persistence monitoring
+        this.startPersistenceMonitoring();
+      })
+      .catch(error => {
+        console.error('❌ Failed to start main bot:', error);
+        console.log('💡 Check your BOT_TOKEN in .env file');
+        process.exit(1);
+      });
+    
+    // Enable graceful stop
+    process.once('SIGINT', () => this.shutdown());
+    process.once('SIGTERM', () => this.shutdown());
+  }
+
+  // ✅ NEW: Add persistence monitoring
+  startPersistenceMonitoring() {
+    // Check every 2 minutes if any bots need to be reinitialized
+    setInterval(async () => {
+      try {
+        console.log('🔍 Running persistence check...');
+        await MiniBotManager.ensureBotPersistence();
+      } catch (error) {
+        console.error('❌ Persistence monitoring error:', error);
+      }
+    }, 2 * 60 * 1000); // 2 minutes
+    
+    // Health check every 5 minutes
+    setInterval(async () => {
+      try {
+        console.log('🏥 Running bot health check...');
+        await MiniBotManager.checkBotHealth();
+      } catch (error) {
+        console.error('❌ Health check error:', error);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    console.log('🔍 Bot persistence & health monitoring started');
+  }
   
   async shutdown() {
     console.log('\n🛑 Shutting down gracefully...');

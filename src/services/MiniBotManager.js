@@ -38,25 +38,6 @@ class MiniBotManager {
       
       for (const botRecord of activeBots) {
         try {
-
-          // Add this method to ensure bots stay active
-ensureBotPersistence = async () => {
-  try {
-    console.log('🔍 Ensuring bot persistence...');
-    const activeBots = await Bot.findAll({ where: { is_active: true } });
-    
-    for (const botRecord of activeBots) {
-      if (!this.activeBots.has(botRecord.id)) {
-        console.log(`🔄 Re-initializing inactive bot: ${botRecord.bot_name}`);
-        await this.initializeBot(botRecord);
-      }
-    }
-    
-    console.log(`✅ Persistence check complete. ${this.activeBots.size} bots active.`);
-  } catch (error) {
-    console.error('❌ Persistence check error:', error);
-  }
-}
           // CRITICAL FIX: Check if already active before initializing
           if (this.activeBots.has(botRecord.id)) {
             console.log(`⏭️ Skipping already active bot: ${botRecord.bot_name}`);
@@ -1252,6 +1233,51 @@ processAddAdmin = async (ctx, botId, input) => {
       }
     } catch (error) {
       console.error(`Error stopping bot ${botId}:`, error);
+    }
+  }
+
+  // Add this method to ensure bots stay active
+  ensureBotPersistence = async () => {
+    try {
+      console.log('🔍 Ensuring bot persistence...');
+      const activeBots = await Bot.findAll({ where: { is_active: true } });
+      
+      for (const botRecord of activeBots) {
+        if (!this.activeBots.has(botRecord.id)) {
+          console.log(`🔄 Re-initializing inactive bot: ${botRecord.bot_name}`);
+          await this.initializeBot(botRecord);
+        }
+      }
+      
+      console.log(`✅ Persistence check complete. ${this.activeBots.size} bots active.`);
+    } catch (error) {
+      console.error('❌ Persistence check error:', error);
+    }
+  }
+
+  // Add this method to check bot health
+  checkBotHealth = async () => {
+    try {
+      console.log('🏥 Checking bot health...');
+      const activeBots = Array.from(this.activeBots.entries());
+      
+      for (const [dbId, botData] of activeBots) {
+        try {
+          // Simple health check - try to get bot info
+          await botData.instance.telegram.getMe();
+          console.log(`✅ Bot healthy: ${botData.record.bot_name}`);
+        } catch (error) {
+          console.error(`❌ Bot unhealthy: ${botData.record.bot_name}`, error.message);
+          // Reinitialize unhealthy bot
+          console.log(`🔄 Reinitializing unhealthy bot: ${botData.record.bot_name}`);
+          await this.stopBot(dbId);
+          await this.initializeBot(botData.record);
+        }
+      }
+      
+      console.log('✅ Bot health check completed');
+    } catch (error) {
+      console.error('❌ Bot health check error:', error);
     }
   }
 }
