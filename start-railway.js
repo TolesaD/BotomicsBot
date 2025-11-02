@@ -1,27 +1,41 @@
-// start-railway.js - Railway-specific start script
+// Railway Startup Script
 console.log('🚀 MarCreatorBot - Railway Startup');
-console.log('==================================');
+console.log('===================================');
 
-// Manual fallback environment variables for Railway
-const manualEnv = {
-  BOT_TOKEN: '7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI',
-  ENCRYPTION_KEY: '7a89253d1236bb589c247a236f676401cb681fcf2d45345efe38180ce70abf23',
-  DATABASE_DIALECT: 'postgres',
-  NODE_ENV: 'production',
-  PORT: '3000'
-};
+// Set environment variables for Railway
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+process.env.PORT = process.env.PORT || 8080;
 
-// Apply manual environment variables if not set
-Object.keys(manualEnv).forEach(key => {
-  if (!process.env[key]) {
-    console.log(`⚠️  Setting ${key} manually (Railway issue)`);
-    process.env[key] = manualEnv[key];
-  } else {
-    console.log(`✅ ${key} is set: ${process.env[key].substring(0, 10)}...`);
+console.log(`✅ NODE_ENV is set: ${process.env.NODE_ENV}...`);
+console.log(`✅ PORT is set: ${process.env.PORT}...`);
+
+// Check if we have the required environment variables
+const requiredEnvVars = ['BOT_TOKEN', 'ENCRYPTION_KEY', 'DATABASE_URL'];
+let allVarsPresent = true;
+
+for (const varName of requiredEnvVars) {
+  if (!process.env[varName]) {
+    console.error(`❌ Missing environment variable: ${varName}`);
+    allVarsPresent = false;
   }
-});
+}
+
+if (!allVarsPresent) {
+  console.error('💡 Please set the following environment variables in Railway:');
+  console.error('   - BOT_TOKEN: Your main bot token from BotFather');
+  console.error('   - ENCRYPTION_KEY: A 32-character encryption key');
+  console.error('   - DATABASE_URL: Automatically provided by PostgreSQL addon');
+  console.error('');
+  console.error('📖 How to fix:');
+  console.error('   1. Go to your Railway project dashboard');
+  console.error('   2. Click on "Variables"');
+  console.error('   3. Add BOT_TOKEN and ENCRYPTION_KEY');
+  console.error('   4. Make sure PostgreSQL addon is provisioned');
+  process.exit(1);
+}
 
 console.log('✅ All environment variables ready');
 console.log('🏃 Starting application...');
 
-require('./src/app.js');
+// Now start the main application
+require('./app.js');
