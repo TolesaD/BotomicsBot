@@ -38,6 +38,25 @@ class MiniBotManager {
       
       for (const botRecord of activeBots) {
         try {
+
+          // Add this method to ensure bots stay active
+ensureBotPersistence = async () => {
+  try {
+    console.log('🔍 Ensuring bot persistence...');
+    const activeBots = await Bot.findAll({ where: { is_active: true } });
+    
+    for (const botRecord of activeBots) {
+      if (!this.activeBots.has(botRecord.id)) {
+        console.log(`🔄 Re-initializing inactive bot: ${botRecord.bot_name}`);
+        await this.initializeBot(botRecord);
+      }
+    }
+    
+    console.log(`✅ Persistence check complete. ${this.activeBots.size} bots active.`);
+  } catch (error) {
+    console.error('❌ Persistence check error:', error);
+  }
+}
           // CRITICAL FIX: Check if already active before initializing
           if (this.activeBots.has(botRecord.id)) {
             console.log(`⏭️ Skipping already active bot: ${botRecord.bot_name}`);
@@ -353,8 +372,8 @@ class MiniBotManager {
   showUserWelcome = async (ctx, metaBotInfo) => {
     try {
       const welcomeMessage = `👋 Welcome to *${metaBotInfo.botName}*!\n\n` +
-        `I'm here to help you get in touch with our team.\n\n` +
-        `Just send me a message and I'll forward it directly to the admins!\n\n` +
+        `Our support team is here to assist you with any questions or concerns you may have\n\n` +
+        `Please describe your query, and we'll ensure reaches the right team member promptly!\n\n` +
         `_This Bot is created by @MarCreatorBot._`;
       
       await ctx.replyWithMarkdown(welcomeMessage);
