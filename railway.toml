@@ -8,7 +8,7 @@ startCommand = "npm start"
 name = "web"
 type = "web"
 httpPort = 3000
-startCommand = "npm start"
 
 [env]
 NODE_ENV = "production"
+DATABASE_DIALECT = "postgres"
