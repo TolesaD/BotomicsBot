@@ -1,6 +1,6 @@
 # 🤖 MarCreatorBot - Production Deployment
 
-A secure Telegram bot factory that allows users to create, manage, and deploy their own mini-bots using pre-built templates.
+A secure Telegram bot factory that allows users to create, manage, and deploy their own mini-bots using the main Bot(MarCreatorBot).
 
 ## 🚀 Quick Production Deployment
 
@@ -12,12 +12,5 @@ A secure Telegram bot factory that allows users to create, manage, and deploy th
    - Click "New Project" → "Deploy from GitHub repo"
    - Select your forked repository
 
-3. **Add Environment Variables:**
-   - `MAIN_BOT_TOKEN` - Your main bot token from @BotFather
-   - `DATABASE_URL` - PostgreSQL connection string (auto-added by Railway)
-   - `ENCRYPTION_KEY` - 32-character random string
-   - `NODE_ENV` - Set to `production`
-
-4. **Deploy automatically** on git push
 
 ### 2. Environment Setup
