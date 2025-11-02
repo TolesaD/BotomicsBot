@@ -355,7 +355,7 @@ class MiniBotManager {
       const welcomeMessage = `👋 Welcome to *${metaBotInfo.botName}*!\n\n` +
         `I'm here to help you get in touch with our team.\n\n` +
         `Just send me a message and I'll forward it directly to the admins!\n\n` +
-        `_This Bot is created by @MarCreatorBot, to advertise the main Bot._`;
+        `_This Bot is created by @MarCreatorBot._`;
       
       await ctx.replyWithMarkdown(welcomeMessage);
     } catch (error) {

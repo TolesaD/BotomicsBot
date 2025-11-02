@@ -200,7 +200,7 @@ class MetaBotCreator {
         `• Regular security updates\n\n` +
         `*Data Sharing:*\n` +
         `We do NOT sell, trade, or share your personal data with third parties.\n\n` +
-        `@${config.SUPPORT_USERNAME || '@MarCreatorSupportBot'}\n\n` +
+        `@${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
         `By using this service, you agree to our privacy practices.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -271,7 +271,7 @@ class MetaBotCreator {
         `*Changes to Terms:*\n` +
         `We may update these terms with reasonable notice.\n\n` +
         `*Contact:*\n` +
-        `Questions? Contact @${config.SUPPORT_USERNAME || '@MarCreatorSupportBot'}\n\n` +
+        `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
         `By using this service, you agree to these terms.`;
 
       const keyboard = Markup.inlineKeyboard([
