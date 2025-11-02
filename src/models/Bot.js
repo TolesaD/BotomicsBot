@@ -53,7 +53,13 @@ const Bot = sequelize.define('Bot', {
       // Always encrypt the token on creation
       if (bot.bot_token && !isEncrypted(bot.bot_token)) {
         console.log(`🔐 Encrypting token for new bot: ${bot.bot_name}`);
-        bot.bot_token = encrypt(bot.bot_token);
+        try {
+          bot.bot_token = encrypt(bot.bot_token);
+          console.log(`✅ Token encrypted successfully for: ${bot.bot_name}`);
+        } catch (error) {
+          console.error(`❌ Failed to encrypt token for ${bot.bot_name}:`, error.message);
+          throw new Error('Token encryption failed');
+        }
       }
       bot.updated_at = new Date();
     },
@@ -62,7 +68,13 @@ const Bot = sequelize.define('Bot', {
       // Encrypt token only if it's being changed and not already encrypted
       if (bot.changed('bot_token') && bot.bot_token && !isEncrypted(bot.bot_token)) {
         console.log(`🔐 Re-encrypting token for bot: ${bot.bot_name}`);
-        bot.bot_token = encrypt(bot.bot_token);
+        try {
+          bot.bot_token = encrypt(bot.bot_token);
+          console.log(`✅ Token re-encrypted successfully for: ${bot.bot_name}`);
+        } catch (error) {
+          console.error(`❌ Failed to re-encrypt token for ${bot.bot_name}:`, error.message);
+          throw new Error('Token re-encryption failed');
+        }
       }
     }
   }
@@ -70,21 +82,39 @@ const Bot = sequelize.define('Bot', {
 
 // Helper function to check if token is already encrypted
 function isEncrypted(token) {
-  if (!token) return false;
-  // Check if it matches our encryption format (iv:authTag:encrypted)
-  const parts = token.split(':');
-  return parts.length === 3 && 
-         parts[0].length === 32 && // iv hex (16 bytes = 32 hex chars)
-         parts[1].length === 32;   // authTag hex (16 bytes = 32 hex chars)
+  if (!token || typeof token !== 'string') return false;
+  
+  try {
+    // Check if it matches our encryption format (iv:authTag:encrypted)
+    const parts = token.split(':');
+    const isValidFormat = parts.length === 3 && 
+           parts[0].length === 32 && // iv hex (16 bytes = 32 hex chars)
+           parts[1].length === 32;   // authTag hex (16 bytes = 32 hex chars)
+    
+    // Additional validation: try to decrypt to verify
+    if (isValidFormat) {
+      const testDecrypt = decrypt(token);
+      return !!testDecrypt; // If decrypt succeeds, it's properly encrypted
+    }
+    return false;
+  } catch (error) {
+    return false;
+  }
 }
 
 // Instance method to get decrypted token
 Bot.prototype.getDecryptedToken = function() {
   try {
-    console.log(`🔓 Attempting to decrypt token for: ${this.bot_name}`);
+    console.log(`🔓 Attempting to decrypt token for: ${this.bot_name} (ID: ${this.bot_id})`);
     
     if (!this.bot_token) {
       console.error('❌ No token found for bot:', this.bot_name);
+      return null;
+    }
+    
+    // Validate token format first
+    if (typeof this.bot_token !== 'string') {
+      console.error(`❌ Invalid token format for: ${this.bot_name}`);
       return null;
     }
     
@@ -95,22 +125,79 @@ Bot.prototype.getDecryptedToken = function() {
         console.error(`❌ Failed to decrypt token for: ${this.bot_name}`);
         return null;
       }
+      
+      // Validate decrypted token format
+      if (!isValidTokenFormat(decrypted)) {
+        console.error(`❌ Decrypted token has invalid format for: ${this.bot_name}`);
+        return null;
+      }
+      
       console.log(`✅ Successfully decrypted token for: ${this.bot_name}`);
       return decrypted;
     } else {
-      console.log(`ℹ️ Token is already plain text for: ${this.bot_name}`);
+      console.log(`ℹ️ Token appears to be plain text for: ${this.bot_name}`);
+      
+      // Validate plain text token format
+      if (!isValidTokenFormat(this.bot_token)) {
+        console.error(`❌ Plain text token has invalid format for: ${this.bot_name}`);
+        return null;
+      }
+      
       // Token is already plain text (might be from old data)
       return this.bot_token;
     }
   } catch (error) {
-    console.error(`💥 Error decrypting token for ${this.bot_name}:`, error.message);
+    console.error(`💥 Critical error decrypting token for ${this.bot_name}:`, error.message);
     return null;
   }
 };
 
+// Helper function to validate token format
+function isValidTokenFormat(token) {
+  if (!token || typeof token !== 'string') return false;
+  
+  // Telegram bot tokens typically follow this pattern: numbers:letters
+  const tokenPattern = /^\d+:[a-zA-Z0-9_-]+$/;
+  return tokenPattern.test(token);
+}
+
 // Static method to find by bot_id
 Bot.findByBotId = async function(botId) {
-  return await this.findOne({ where: { bot_id: botId } });
+  try {
+    return await this.findOne({ where: { bot_id: botId } });
+  } catch (error) {
+    console.error(`Error finding bot by ID ${botId}:`, error);
+    return null;
+  }
+};
+
+// Static method to get active bots by owner
+Bot.findActiveByOwner = async function(ownerId) {
+  try {
+    return await this.findAll({ 
+      where: { 
+        owner_id: ownerId,
+        is_active: true 
+      },
+      order: [['created_at', 'DESC']]
+    });
+  } catch (error) {
+    console.error(`Error finding active bots for owner ${ownerId}:`, error);
+    return [];
+  }
+};
+
+// Static method to get all active bots
+Bot.findAllActive = async function() {
+  try {
+    return await this.findAll({ 
+      where: { is_active: true },
+      order: [['created_at', 'DESC']]
+    });
+  } catch (error) {
+    console.error('Error finding all active bots:', error);
+    return [];
+  }
 };
 
 // Static method to get user stats
@@ -119,9 +206,11 @@ Bot.getUserStats = async function(botId) {
   const Feedback = require('./Feedback');
   
   try {
-    const userCount = await UserLog.count({ where: { bot_id: botId } });
-    const messageCount = await Feedback.count({ where: { bot_id: botId } });
-    const pendingCount = await Feedback.count({ where: { bot_id: botId, is_replied: false } });
+    const [userCount, messageCount, pendingCount] = await Promise.all([
+      UserLog.count({ where: { bot_id: botId } }),
+      Feedback.count({ where: { bot_id: botId } }),
+      Feedback.count({ where: { bot_id: botId, is_replied: false } })
+    ]);
     
     return {
       totalUsers: userCount,
@@ -136,15 +225,91 @@ Bot.getUserStats = async function(botId) {
 
 // Static method to get bots by owner
 Bot.findByOwner = async function(ownerId) {
-  return await this.findAll({ where: { owner_id: ownerId } });
+  try {
+    return await this.findAll({ 
+      where: { owner_id: ownerId },
+      order: [['created_at', 'DESC']]
+    });
+  } catch (error) {
+    console.error(`Error finding bots for owner ${ownerId}:`, error);
+    return [];
+  }
+};
+
+// Instance method to test bot token (verify it works with Telegram API)
+Bot.prototype.testToken = async function() {
+  try {
+    const token = this.getDecryptedToken();
+    if (!token) {
+      return { success: false, error: 'Invalid or missing token' };
+    }
+    
+    const { Telegraf } = require('telegraf');
+    const testBot = new Telegraf(token);
+    
+    // Try to get bot info from Telegram API
+    const botInfo = await testBot.telegram.getMe();
+    
+    return { 
+      success: true, 
+      botInfo: {
+        id: botInfo.id,
+        username: botInfo.username,
+        first_name: botInfo.first_name,
+        can_join_groups: botInfo.can_join_groups,
+        can_read_all_group_messages: botInfo.can_read_all_group_messages,
+        supports_inline_queries: botInfo.supports_inline_queries
+      }
+    };
+  } catch (error) {
+    console.error(`Error testing token for bot ${this.bot_name}:`, error.message);
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
+};
+
+// Instance method to safely activate bot
+Bot.prototype.safeActivate = async function() {
+  try {
+    // Test token before activation
+    const testResult = await this.testToken();
+    if (!testResult.success) {
+      throw new Error(`Token validation failed: ${testResult.error}`);
+    }
+    
+    this.is_active = true;
+    this.updated_at = new Date();
+    await this.save();
+    
+    return { success: true, botInfo: testResult.botInfo };
+  } catch (error) {
+    console.error(`Error activating bot ${this.bot_name}:`, error.message);
+    return { success: false, error: error.message };
+  }
 };
 
 // Instance method to JSON
 Bot.prototype.toJSON = function() {
   const values = { ...this.get() };
-  // Don't include encrypted token in JSON output
+  // Don't include encrypted token in JSON output for security
   delete values.bot_token;
   return values;
+};
+
+// Instance method to safe format (includes minimal info)
+Bot.prototype.toSafeFormat = function() {
+  return {
+    id: this.id,
+    bot_id: this.bot_id,
+    bot_name: this.bot_name,
+    bot_username: this.bot_username,
+    welcome_message: this.welcome_message,
+    is_active: this.is_active,
+    created_at: this.created_at,
+    updated_at: this.updated_at
+  };
 };
 
 module.exports = Bot;
