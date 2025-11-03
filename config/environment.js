@@ -93,12 +93,15 @@ required.forEach(key => {
   }
 });
 
-// Validate DATABASE_URL for PostgreSQL
+// Validate DATABASE_URL for PostgreSQL (more flexible for Railway)
 if (config.DATABASE_URL && !config.DATABASE_URL.includes('postgres')) {
   console.error('❌ DATABASE_URL must be a PostgreSQL connection string');
+  console.error('🔍 Current DATABASE_URL:', config.DATABASE_URL.substring(0, 50) + '...');
   if (config.NODE_ENV === 'production') {
     process.exit(1);
   }
+} else if (config.DATABASE_URL) {
+  console.log('✅ DATABASE_URL validation passed - PostgreSQL connection detected');
 }
 
 // Webhook URL validation
