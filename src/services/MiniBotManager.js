@@ -382,9 +382,9 @@ class MiniBotManager {
   showUserWelcome = async (ctx, metaBotInfo) => {
     try {
       const welcomeMessage = `👋 Welcome to *${metaBotInfo.botName}*!\n\n` +
-        `Our support team is here to assist you with any questions or concerns you may have\n\n` +
-        `Please describe your query, and we'll ensure reaches the right team member promptly!\n\n` +
-        `_This Bot is created by @MarCreatorBot._`;
+        `We are here to assist you with any questions or concerns you may have.\n\n` +
+        `Simply send us a message, and we'll respond as quickly as possible!\n\n` +
+        `_This Bot is created by @MarCreatorBot_`;
       
       await ctx.replyWithMarkdown(welcomeMessage);
     } catch (error) {
@@ -951,8 +951,7 @@ class MiniBotManager {
         `👥 Total Users: ${userCount}\n` +
         `💬 Total Messages: ${messageCount}\n` +
         `📨 Pending Replies: ${pendingCount}\n` +
-        `🔄 Status: ✅ Active\n\n` +
-        `*Managed via @MarCreatorBot*`;
+        `🔄 Status: ✅ Active\n\n`;
       
       await ctx.replyWithMarkdown(statsMessage);
       

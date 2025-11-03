@@ -1,6 +1,7 @@
 // Railway Startup Script
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
+console.log('🔧 CRITICAL: This version includes fixes for mini-bot persistence');
 
 // Set basic environment variables
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
@@ -9,7 +10,7 @@ process.env.PORT = process.env.PORT || 8080;
 console.log(`✅ NODE_ENV is set: ${process.env.NODE_ENV}`);
 console.log(`✅ PORT is set: ${process.env.PORT}`);
 
-// Check environment variables with better error messages
+// Check environment variables
 const missingVars = [];
 
 if (!process.env.BOT_TOKEN) {
@@ -32,36 +33,8 @@ if (missingVars.length > 0) {
   console.error('   1. Go to your Railway project dashboard: https://railway.app');
   console.error('   2. Click on your project');
   console.error('   3. Go to the "Variables" tab');
-  console.error('   4. Add the following variables:');
-  console.error('');
-  
-  if (missingVars.includes('BOT_TOKEN')) {
-    console.error('   BOT_TOKEN:');
-    console.error('   - Get this from @BotFather on Telegram');
-    console.error('   - Command: /newbot');
-    console.error('   - Example: 1234567890:ABCdefGHIjklMNopQRstUVwxYZ');
-    console.error('');
-  }
-  
-  if (missingVars.includes('ENCRYPTION_KEY')) {
-    console.error('   ENCRYPTION_KEY:');
-    console.error('   - Generate a random 32-character string');
-    console.error('   - You can use: https://randomkeygen.com/');
-    console.error('   - Example: MySuperSecretEncryptionKey123!');
-    console.error('');
-  }
-  
-  if (missingVars.includes('DATABASE_URL')) {
-    console.error('   DATABASE_URL:');
-    console.error('   - This is automatically provided by Railway');
-    console.error('   - Go to your project, click "New", then "Database"');
-    console.error('   - Select "PostgreSQL"');
-    console.error('   - Railway will automatically add DATABASE_URL');
-    console.error('');
-  }
-  
-  console.error('   5. After adding variables, Railway will automatically redeploy');
-  console.error('   6. Your bot should then start successfully');
+  console.error('   4. Add the missing variables');
+  console.error('   5. Railway will automatically redeploy');
   
   process.exit(1);
 }
