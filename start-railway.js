@@ -1,30 +1,36 @@
-// Railway Startup - Wait for Variables
-console.log('🚀 MarCreatorBot - Railway Startup');
+// Railway Test - Check ALL Environment Variables
+console.log('🚀 Railway Environment Variables Test');
 
-// Wait a bit for Railway to inject environment variables
-console.log('⏳ Waiting for Railway environment variables...');
-await new Promise(resolve => setTimeout(resolve, 3000));
+// List ALL environment variables
+console.log('🔍 ALL Environment Variables:');
+Object.keys(process.env).forEach(key => {
+  console.log(`   ${key}:`, process.env[key] ? `"${process.env[key]}"` : 'NOT SET');
+});
 
-console.log('🔍 Environment Variables Status:');
-console.log('   BOT_TOKEN:', process.env.BOT_TOKEN ? `SET (${process.env.BOT_TOKEN.length} chars)` : 'MISSING');
-console.log('   ENCRYPTION_KEY:', process.env.ENCRYPTION_KEY ? `SET (${process.env.ENCRYPTION_KEY.length} chars)` : 'MISSING');
-console.log('   DATABASE_URL:', process.env.DATABASE_URL ? `SET (${process.env.DATABASE_URL.length} chars)` : 'MISSING');
+// Check if we have ANY variables at all
+const allVars = Object.keys(process.env);
+console.log(`📊 Total environment variables: ${allVars.length}`);
 
-if (process.env.DATABASE_URL) {
-  console.log('   DATABASE_URL starts with:', process.env.DATABASE_URL.substring(0, 25));
+if (allVars.length === 0) {
+  console.error('❌ NO environment variables found!');
+  console.error('💡 This means Railway is not injecting any variables');
+  console.error('💡 Check your Railway project configuration');
+} else {
+  console.log('✅ Environment variables found, but required ones are missing');
+  console.log('💡 Check if BOT_TOKEN, ENCRYPTION_KEY, DATABASE_URL are set in Railway');
 }
 
-// Check if variables exist
-if (!process.env.BOT_TOKEN || !process.env.ENCRYPTION_KEY || !process.env.DATABASE_URL) {
-  console.error('❌ Missing required environment variables from Railway');
-  console.error('💡 Check your Railway project variables:');
-  console.error('   - BOT_TOKEN, ENCRYPTION_KEY must be manually set');
-  console.error('   - DATABASE_URL should be auto-provided by PostgreSQL service');
-  process.exit(1);
-}
+// Start a simple HTTP server to verify deployment works
+const http = require('http');
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end(`Railway Test - Environment Variables: ${allVars.length} found\n\n` +
+    allVars.map(key => `${key}: ${process.env[key] ? 'SET' : 'NOT SET'}`).join('\n')
+  );
+});
 
-console.log('✅ All environment variables received from Railway');
-console.log('🏃 Starting application...');
-
-// Start the main application
-require('./src/app.js');
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 Test server running on port ${PORT}`);
+  console.log('📱 Visit your Railway app URL to see environment status');
+});
