@@ -7,8 +7,6 @@
     "start": "node start-railway.js",
     "dev": "nodemon src/app.js",
     "debug": "node debug-env.js",
-    "type": "commonjs",
-    "name": "metabot-creator",
     "polling": "node src/app-polling.js",
     "setup": "node database/setup.js",
     "migrate": "node database/migrate.js",
