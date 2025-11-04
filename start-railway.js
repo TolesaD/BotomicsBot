@@ -1,30 +1,29 @@
-// Railway Startup - Ultra Minimal Version
+// Railway Startup - Wait for Variables
 console.log('🚀 MarCreatorBot - Railway Startup');
 
-// CRITICAL: NO environment variable processing
-// Just log what we receive from Railway
-console.log('🔍 Raw Environment Variables from Railway:');
-console.log('   BOT_TOKEN exists:', !!process.env.BOT_TOKEN);
-console.log('   ENCRYPTION_KEY exists:', !!process.env.ENCRYPTION_KEY);
-console.log('   DATABASE_URL exists:', !!process.env.DATABASE_URL);
+// Wait a bit for Railway to inject environment variables
+console.log('⏳ Waiting for Railway environment variables...');
+await new Promise(resolve => setTimeout(resolve, 3000));
+
+console.log('🔍 Environment Variables Status:');
+console.log('   BOT_TOKEN:', process.env.BOT_TOKEN ? `SET (${process.env.BOT_TOKEN.length} chars)` : 'MISSING');
+console.log('   ENCRYPTION_KEY:', process.env.ENCRYPTION_KEY ? `SET (${process.env.ENCRYPTION_KEY.length} chars)` : 'MISSING');
+console.log('   DATABASE_URL:', process.env.DATABASE_URL ? `SET (${process.env.DATABASE_URL.length} chars)` : 'MISSING');
 
 if (process.env.DATABASE_URL) {
-  console.log('   DATABASE_URL length:', process.env.DATABASE_URL.length);
-  console.log('   DATABASE_URL value:', process.env.DATABASE_URL);
-} else {
-  console.log('❌ DATABASE_URL is missing from Railway');
+  console.log('   DATABASE_URL starts with:', process.env.DATABASE_URL.substring(0, 25));
+}
+
+// Check if variables exist
+if (!process.env.BOT_TOKEN || !process.env.ENCRYPTION_KEY || !process.env.DATABASE_URL) {
+  console.error('❌ Missing required environment variables from Railway');
+  console.error('💡 Check your Railway project variables:');
+  console.error('   - BOT_TOKEN, ENCRYPTION_KEY must be manually set');
+  console.error('   - DATABASE_URL should be auto-provided by PostgreSQL service');
   process.exit(1);
 }
 
-// Simple check - if DATABASE_URL is corrupted, exit immediately
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL === 'undefined' || process.env.DATABASE_URL.length < 20) {
-  console.error('❌ DATABASE_URL is corrupted or invalid');
-  console.error('   Current value:', process.env.DATABASE_URL);
-  console.error('💡 Check Railway Variables - DATABASE_URL should be a PostgreSQL connection string');
-  process.exit(1);
-}
-
-console.log('✅ Environment variables received from Railway');
+console.log('✅ All environment variables received from Railway');
 console.log('🏃 Starting application...');
 
 // Start the main application

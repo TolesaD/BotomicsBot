@@ -1,8 +1,4 @@
-﻿const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
-
-const config = {
-  // ==================== BOT CONFIGURATION ====================
+﻿  // ==================== BOT CONFIGURATION ====================
   BOT_TOKEN: process.env.BOT_TOKEN,
   MAIN_BOT_USERNAME: process.env.MAIN_BOT_USERNAME || '@MarCreatorBot',
   MAIN_BOT_NAME: process.env.MAIN_BOT_NAME || 'MarCreatorBot',
@@ -79,23 +75,20 @@ const config = {
 
 // ==================== VALIDATION & POST-PROCESSING ====================
 
-// Validate DATABASE_URL for PostgreSQL (more flexible for Railway)
-if (config.DATABASE_URL && !config.DATABASE_URL.includes('postgres')) {
-  console.error('❌ DATABASE_URL must be a PostgreSQL connection string');
-  console.error('🔍 Current DATABASE_URL:', config.DATABASE_URL.substring(0, 50) + '...');
+// Simple DATABASE_URL validation
+if (!config.DATABASE_URL) {
+  console.error('❌ DATABASE_URL is required but not set in Railway');
   if (config.NODE_ENV === 'production') {
     process.exit(1);
   }
-} else if (config.DATABASE_URL) {
+} else if (!config.DATABASE_URL.includes('postgres')) {
+  console.error('❌ DATABASE_URL must be a PostgreSQL connection string');
+  console.error('🔍 Current DATABASE_URL:', config.DATABASE_URL);
+  if (config.NODE_ENV === 'production') {
+    process.exit(1);
+  }
+} else {
   console.log('✅ DATABASE_URL validation passed - PostgreSQL connection detected');
-}
-
-// Validate DATABASE_URL for PostgreSQL
-if (config.DATABASE_URL && !config.DATABASE_URL.includes('postgres')) {
-  console.error('❌ DATABASE_URL must be a PostgreSQL connection string');
-  if (config.NODE_ENV === 'production') {
-    process.exit(1);
-  }
 }
 
 // Webhook URL validation
