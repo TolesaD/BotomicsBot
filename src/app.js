@@ -375,7 +375,7 @@ class MetaBotCreator {
           console.log('ℹ️ No active mini-bots found to initialize');
           
           // Check if this might be a database timing issue
-        const { Bot } = require('../../models');
+        const { Bot } = require('./models');
           const activeBots = await Bot.findAll({ where: { is_active: true } });
           console.log(`📊 Database shows ${activeBots.length} active bots`);
           

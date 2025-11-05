@@ -1,5 +1,5 @@
 const { Telegraf, Markup } = require('telegraf');
-const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
+const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('./models');
 
 class MiniBotManager {
   constructor() {
