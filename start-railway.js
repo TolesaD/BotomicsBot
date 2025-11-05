@@ -1,82 +1,74 @@
-// start-railway.js - PRODUCTION VERSION
+// start-railway.js - PRODUCTION WITH RAILWAY WORKAROUND
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
-console.log('🔧 PRODUCTION: Railway Environment');
+console.log('🔧 PRODUCTION: Setting environment variables (Railway workaround)');
 
-// Railway automatically provides these for PostgreSQL
-const DATABASE_URL = process.env.DATABASE_URL;
+// ==================== RAILWAY WORKAROUND ====================
+// Railway's environment variable injection is broken
+// We need to set these manually before loading the config
+// ============================================================
 
-console.log('🔍 Checking Railway Environment:');
-console.log(`   RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT || 'NOT SET'}`);
-console.log(`   DATABASE_URL: ${DATABASE_URL ? 'SET (' + DATABASE_URL.length + ' chars)' : 'NOT SET'}`);
+const productionConfig = {
+  // REQUIRED - Core configuration
+  DATABASE_URL: 'postgresql://postgres:kLpoExiXkvPvBYaSERToYbaavbHiawPs@trolley.proxy.rlwy.net:43180/railway',
+  BOT_TOKEN: '7983296108:AAHcJ4c8Q2PgpI4pJz0Q4qX4Q4qX4Q4qX4Q4',
+  ENCRYPTION_KEY: 'your-32-character-super-secure-encryption-key-here',
+  
+  // OPTIONAL - With defaults
+  MAIN_BOT_NAME: 'MarCreatorBot',
+  PORT: '8080',
+  NODE_ENV: 'production',
+  
+  // Feature flags
+  MAX_BOTS_PER_USER: '10',
+  ENABLE_BROADCASTS: 'true',
+  ENABLE_TEAM_MANAGEMENT: 'true',
+  ENABLE_ANALYTICS: 'true',
+  ENABLE_MINI_BOT_DASHBOARD: 'true',
+  MINI_BOT_COMMANDS_ENABLED: 'true',
+  REAL_TIME_NOTIFICATIONS: 'true',
+  AUTO_RESTART_BOTS: 'true',
+  PERSIST_BOT_SESSIONS: 'true',
+  AUTO_RECONNECT_BOTS: 'true'
+};
 
-if (!DATABASE_URL) {
-  console.error('❌ DATABASE_URL not found - Railway PostgreSQL not configured');
-  console.error('💡 Please add PostgreSQL plugin in Railway dashboard');
+console.log('🔧 Setting environment variables:');
+console.log(`   DATABASE_URL: SET (${productionConfig.DATABASE_URL.length} chars)`);
+console.log(`   BOT_TOKEN: SET (${productionConfig.BOT_TOKEN.length} chars)`);
+console.log(`   ENCRYPTION_KEY: SET (${productionConfig.ENCRYPTION_KEY.length} chars)`);
+console.log(`   MAIN_BOT_NAME: ${productionConfig.MAIN_BOT_NAME}`);
+console.log(`   NODE_ENV: ${productionConfig.NODE_ENV}`);
+
+// Set ALL environment variables
+Object.keys(productionConfig).forEach(key => {
+  process.env[key] = productionConfig[key];
+});
+
+console.log('✅ Environment variables set successfully');
+
+// ==================== VALIDATION ====================
+
+// Quick validation before proceeding
+if (!process.env.BOT_TOKEN || !process.env.ENCRYPTION_KEY || !process.env.DATABASE_URL) {
+  console.error('❌ Critical environment variables missing');
   process.exit(1);
 }
 
-// For custom variables, we need to handle Railway's variable propagation issue
-// Try multiple strategies to get custom variables
-console.log('\n🔄 Resolving custom environment variables...');
-
-// Strategy 1: Direct access (should work if Railway fixes their bug)
-let BOT_TOKEN = process.env.BOT_TOKEN;
-let ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-let MAIN_BOT_NAME = process.env.MAIN_BOT_NAME || 'MarCreatorBot';
-
-console.log(`   Strategy 1 - BOT_TOKEN: ${BOT_TOKEN ? 'SET' : 'NOT SET'}`);
-console.log(`   Strategy 1 - ENCRYPTION_KEY: ${ENCRYPTION_KEY ? 'SET' : 'NOT SET'}`);
-
-// Strategy 2: Check if variables exist but are empty (Railway bug)
-if (!BOT_TOKEN && process.env.BOT_TOKEN === '') {
-  console.log('⚠️  BOT_TOKEN exists but is empty string (Railway bug)');
-}
-
-if (!ENCRYPTION_KEY && process.env.ENCRYPTION_KEY === '') {
-  console.log('⚠️  ENCRYPTION_KEY exists but is empty string (Railway bug)');
-}
-
-// Final validation
-if (!BOT_TOKEN) {
-  console.error('\n❌ BOT_TOKEN is required but not set');
-  console.error('💡 Railway Variables Setup:');
-  console.error('   1. Go to Railway → Your Service → Variables');
-  console.error('   2. Add: BOT_TOKEN=your_bot_token_here');
-  console.error('   3. Add: ENCRYPTION_KEY=your_32_char_key_here');
-  console.error('   4. Redeploy after setting variables');
-  process.exit(1);
-}
-
-if (!ENCRYPTION_KEY) {
-  console.error('\n❌ ENCRYPTION_KEY is required but not set');
-  console.error('💡 This is needed to encrypt bot tokens in the database');
-  process.exit(1);
-}
-
-// Validate encryption key length
-if (ENCRYPTION_KEY.length < 32) {
+if (process.env.ENCRYPTION_KEY.length < 32) {
   console.error('❌ ENCRYPTION_KEY must be at least 32 characters');
   process.exit(1);
 }
 
-console.log('\n✅ All required variables resolved:');
-console.log(`   DATABASE_URL: SET (PostgreSQL connected)`);
-console.log(`   BOT_TOKEN: SET (${BOT_TOKEN.length} chars)`);
-console.log(`   ENCRYPTION_KEY: SET (${ENCRYPTION_KEY.length} chars)`);
-console.log(`   MAIN_BOT_NAME: ${MAIN_BOT_NAME}`);
-console.log(`   NODE_ENV: production`);
+if (!process.env.BOT_TOKEN.match(/^\d+:[a-zA-Z0-9_-]+$/)) {
+  console.error('❌ BOT_TOKEN has invalid format');
+  process.exit(1);
+}
 
-// Ensure all required variables are set in process.env
-process.env.BOT_TOKEN = BOT_TOKEN;
-process.env.ENCRYPTION_KEY = ENCRYPTION_KEY;
-process.env.DATABASE_URL = DATABASE_URL;
-process.env.MAIN_BOT_NAME = MAIN_BOT_NAME;
-process.env.NODE_ENV = 'production';
-
+console.log('✅ All validations passed');
 console.log('🏃 Starting application from src/app.js...');
 
-// Production error handling
+// ==================== PRODUCTION ERROR HANDLING ====================
+
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
@@ -85,6 +77,8 @@ process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
   setTimeout(() => process.exit(1), 1000);
 });
+
+// ==================== START APPLICATION ====================
 
 try {
   require('./src/app.js');
