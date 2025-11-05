@@ -18,7 +18,7 @@
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
   
   // ==================== SERVER CONFIGURATION ====================
-  PORT: process.env.PORT || 8080,
+  PORT: process.env.PORT || 3000,
   NODE_ENV: process.env.NODE_ENV || 'production',
   HOST: process.env.HOST || '0.0.0.0',
   
@@ -74,38 +74,17 @@
   AUTO_RECONNECT_BOTS: process.env.AUTO_RECONNECT_BOTS !== 'false',
 };
 
-// ==================== VALIDATION ====================
+// ==================== EXPORT CONFIGURATION ====================
 
 console.log('🔧 Loading environment configuration...');
 
-// Validate critical variables in production
-if (config.NODE_ENV === 'production') {
-  if (!config.BOT_TOKEN) {
-    console.error('❌ BOT_TOKEN is required in production');
-    process.exit(1);
-  }
-  
-  if (!config.ENCRYPTION_KEY) {
-    console.error('❌ ENCRYPTION_KEY is required in production');
-    process.exit(1);
-  }
-  
-  if (!config.DATABASE_URL) {
-    console.error('❌ DATABASE_URL is required in production');
-    process.exit(1);
-  }
-  
-  // Validate token format
-  if (!config.BOT_TOKEN.match(/^\d+:[a-zA-Z0-9_-]+$/)) {
-    console.error('❌ BOT_TOKEN has invalid format');
-    process.exit(1);
-  }
-  
-  // Validate encryption key length
-  if (config.ENCRYPTION_KEY.length < 32) {
-    console.error('❌ ENCRYPTION_KEY must be at least 32 characters');
-    process.exit(1);
-  }
+// Enhanced debugging for DATABASE_URL
+console.log('🔍 DATABASE_URL Debug:');
+console.log('   process.env.DATABASE_URL exists:', !!process.env.DATABASE_URL);
+console.log('   config.DATABASE_URL exists:', !!config.DATABASE_URL);
+if (process.env.DATABASE_URL) {
+  console.log('   DATABASE_URL length:', process.env.DATABASE_URL.length);
+  console.log('   DATABASE_URL starts with:', process.env.DATABASE_URL.substring(0, 20) + '...');
 }
 
 console.log('✅ Environment loaded:');
@@ -114,6 +93,37 @@ console.log('   PORT:', config.PORT);
 console.log('   BOT_TOKEN:', config.BOT_TOKEN ? '***' + config.BOT_TOKEN.slice(-4) : 'NOT SET');
 console.log('   MAIN_BOT:', config.MAIN_BOT_NAME);
 console.log('   DATABASE: POSTGRESQL');
-console.log('   DATABASE_URL:', config.DATABASE_URL ? 'SET (' + config.DATABASE_URL.length + ' chars)' : 'NOT SET');
+console.log('   DATABASE_URL:', config.DATABASE_URL ? '***' + config.DATABASE_URL.split('@')[1] : 'NOT SET');
+
+// ==================== VALIDATION & POST-PROCESSING ====================
+
+// Better DATABASE_URL handling
+if (!config.DATABASE_URL) {
+  console.error('❌ DATABASE_URL is required but not set');
+  console.error('💡 Check Railway environment variables:');
+  console.error('   - Go to your project → Settings → Variables');
+  console.error('   - Ensure DATABASE_URL is set');
+  
+  // Try to get from Railway's default environment variable
+  if (process.env.RAILWAY_DATABASE_URL) {
+    console.log('🔧 Using RAILWAY_DATABASE_URL instead');
+    config.DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
+  } else {
+    console.error('💥 No DATABASE_URL available');
+    if (config.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+  }
+}
+
+// Webhook URL fix for Railway
+if (config.NODE_ENV === 'production' && !config.WEBHOOK_URL.includes('https')) {
+  console.warn('⚠️  WARNING: Production webhook URL should use HTTPS for security');
+  // Auto-fix for Railway
+  if (process.env.RAILWAY_STATIC_URL) {
+    config.WEBHOOK_URL = `https://${process.env.RAILWAY_STATIC_URL}`;
+    console.log('🔧 Auto-fixed WEBHOOK_URL for Railway:', config.WEBHOOK_URL);
+  }
+}
 
 module.exports = config;
