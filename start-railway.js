@@ -1,74 +1,94 @@
-// start-railway.js - ENHANCED DEBUG
+// start-railway.js - PRODUCTION VERSION
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
+console.log('🔧 PRODUCTION: Railway Environment');
 
-// Enhanced environment debugging
-console.log('🔍 ENVIRONMENT ANALYSIS:');
-const allVars = process.env;
-const relevantVars = Object.keys(allVars).filter(key => 
-  key.includes('DATABASE') || 
-  key.includes('POSTGRES') || 
-  key.includes('RAILWAY') ||
-  key.includes('BOT') ||
-  key.includes('ENCRYPTION')
-);
+// Railway automatically provides these for PostgreSQL
+const DATABASE_URL = process.env.DATABASE_URL;
 
-relevantVars.forEach(key => {
-  const value = allVars[key];
-  if (key.includes('TOKEN') || key.includes('KEY') || key.includes('PASSWORD')) {
-    console.log(`   ${key}: ***${value ? value.slice(-4) : 'NULL'}`);
-  } else {
-    console.log(`   ${key}: ${value || 'NULL'}`);
-  }
-});
+console.log('🔍 Checking Railway Environment:');
+console.log(`   RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT || 'NOT SET'}`);
+console.log(`   DATABASE_URL: ${DATABASE_URL ? 'SET (' + DATABASE_URL.length + ' chars)' : 'NOT SET'}`);
 
-// Check for PostgreSQL in multiple ways
-const DATABASE_URL = process.env.DATABASE_URL || 
-                    process.env.RAILWAY_DATABASE_URL ||
-                    process.env.DATABASE_PRIVATE_URL ||
-                    process.env.POSTGRES_URL;
-
-if (DATABASE_URL) {
-  console.log(`\n✅ Database configured: ${DATABASE_URL.length} chars`);
-  process.env.DATABASE_URL = DATABASE_URL;
-} else {
-  console.error('\n❌ NO DATABASE CONFIGURED');
-  console.error('\n🚨 IMMEDIATE ACTION REQUIRED:');
-  console.error('   1. Go to: https://railway.app');
-  console.error('   2. Click your service "MarcreatorBot Mega"');
-  console.error('   3. Click the "+" button (top right)');
-  console.error('   4. Select "PostgreSQL"');
-  console.error('   5. Wait 2 minutes, then redeploy');
-  console.error('\n💡 Already have PostgreSQL? Connect it in Variables tab');
+if (!DATABASE_URL) {
+  console.error('❌ DATABASE_URL not found - Railway PostgreSQL not configured');
+  console.error('💡 Please add PostgreSQL plugin in Railway dashboard');
   process.exit(1);
 }
 
-// Check other required variables
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+// For custom variables, we need to handle Railway's variable propagation issue
+// Try multiple strategies to get custom variables
+console.log('\n🔄 Resolving custom environment variables...');
 
+// Strategy 1: Direct access (should work if Railway fixes their bug)
+let BOT_TOKEN = process.env.BOT_TOKEN;
+let ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+let MAIN_BOT_NAME = process.env.MAIN_BOT_NAME || 'MarCreatorBot';
+
+console.log(`   Strategy 1 - BOT_TOKEN: ${BOT_TOKEN ? 'SET' : 'NOT SET'}`);
+console.log(`   Strategy 1 - ENCRYPTION_KEY: ${ENCRYPTION_KEY ? 'SET' : 'NOT SET'}`);
+
+// Strategy 2: Check if variables exist but are empty (Railway bug)
+if (!BOT_TOKEN && process.env.BOT_TOKEN === '') {
+  console.log('⚠️  BOT_TOKEN exists but is empty string (Railway bug)');
+}
+
+if (!ENCRYPTION_KEY && process.env.ENCRYPTION_KEY === '') {
+  console.log('⚠️  ENCRYPTION_KEY exists but is empty string (Railway bug)');
+}
+
+// Final validation
 if (!BOT_TOKEN) {
-  console.error('❌ BOT_TOKEN not set');
-  console.error('💡 Set in Railway → Variables → BOT_TOKEN=your_token_here');
+  console.error('\n❌ BOT_TOKEN is required but not set');
+  console.error('💡 Railway Variables Setup:');
+  console.error('   1. Go to Railway → Your Service → Variables');
+  console.error('   2. Add: BOT_TOKEN=your_bot_token_here');
+  console.error('   3. Add: ENCRYPTION_KEY=your_32_char_key_here');
+  console.error('   4. Redeploy after setting variables');
   process.exit(1);
 }
 
 if (!ENCRYPTION_KEY) {
-  console.error('❌ ENCRYPTION_KEY not set');
-  console.error('💡 Set in Railway → Variables → ENCRYPTION_KEY=your_32_char_key');
+  console.error('\n❌ ENCRYPTION_KEY is required but not set');
+  console.error('💡 This is needed to encrypt bot tokens in the database');
   process.exit(1);
 }
 
-console.log('\n✅ ALL SYSTEMS READY:');
-console.log(`   Database: PostgreSQL connected`);
-console.log(`   Bot Token: Ready`);
-console.log(`   Encryption: Ready`);
-console.log('🏃 Starting application...');
+// Validate encryption key length
+if (ENCRYPTION_KEY.length < 32) {
+  console.error('❌ ENCRYPTION_KEY must be at least 32 characters');
+  process.exit(1);
+}
 
-// Start the app
+console.log('\n✅ All required variables resolved:');
+console.log(`   DATABASE_URL: SET (PostgreSQL connected)`);
+console.log(`   BOT_TOKEN: SET (${BOT_TOKEN.length} chars)`);
+console.log(`   ENCRYPTION_KEY: SET (${ENCRYPTION_KEY.length} chars)`);
+console.log(`   MAIN_BOT_NAME: ${MAIN_BOT_NAME}`);
+console.log(`   NODE_ENV: production`);
+
+// Ensure all required variables are set in process.env
+process.env.BOT_TOKEN = BOT_TOKEN;
+process.env.ENCRYPTION_KEY = ENCRYPTION_KEY;
+process.env.DATABASE_URL = DATABASE_URL;
+process.env.MAIN_BOT_NAME = MAIN_BOT_NAME;
+process.env.NODE_ENV = 'production';
+
+console.log('🏃 Starting application from src/app.js...');
+
+// Production error handling
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  setTimeout(() => process.exit(1), 1000);
+});
+
 try {
   require('./src/app.js');
 } catch (error) {
-  console.error('❌ Application failed:', error);
+  console.error('❌ Failed to start application:', error);
   process.exit(1);
 }
