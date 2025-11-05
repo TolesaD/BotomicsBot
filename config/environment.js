@@ -3,11 +3,11 @@
   BOT_TOKEN: process.env.BOT_TOKEN,
   MAIN_BOT_USERNAME: process.env.MAIN_BOT_USERNAME || '@MarCreatorBot',
   MAIN_BOT_NAME: process.env.MAIN_BOT_NAME || 'MarCreatorBot',
-  WEBHOOK_URL: process.env.WEBHOOK_URL || `http://localhost:${process.env.PORT || 3000}`,
+  WEBHOOK_URL: process.env.WEBHOOK_URL || `https://${process.env.RAILWAY_STATIC_URL || `localhost:${process.env.PORT || 3000}`}`,
   
   // ==================== DATABASE CONFIGURATION ====================
   DATABASE_URL: process.env.DATABASE_URL,
-  DATABASE_DIALECT: 'postgres', // Force PostgreSQL
+  DATABASE_DIALECT: 'postgres',
   
   // Connection pool settings
   DATABASE_POOL_MAX: parseInt(process.env.DATABASE_POOL_MAX) || 20,
@@ -74,53 +74,19 @@
   AUTO_RECONNECT_BOTS: process.env.AUTO_RECONNECT_BOTS !== 'false',
 };
 
-// ==================== VALIDATION & POST-PROCESSING ====================
-
-/* // Enhanced DATABASE_URL validation with better timing
-if (!config.DATABASE_URL) {
-  console.error('❌ DATABASE_URL is required but not set in Railway');
-  console.error('🔧 Checking environment variables...');
-  console.error('   process.env.DATABASE_URL:', process.env.DATABASE_URL ? '***' + process.env.DATABASE_URL.split('@')[1] : 'NOT SET');
-  console.error('   config.DATABASE_URL:', config.DATABASE_URL);
-  
-  if (config.NODE_ENV === 'production') {
-    // Give it a moment and check again (sometimes env vars load async)
-    setTimeout(() => {
-      if (!config.DATABASE_URL && !process.env.DATABASE_URL) {
-        console.error('💥 FATAL: DATABASE_URL still not available after delay');
-        process.exit(1);
-      }
-    }, 1000);
-  }
-} else if (!config.DATABASE_URL.includes('postgres')) {
-  console.error('❌ DATABASE_URL must be a PostgreSQL connection string');
-  console.error('🔍 Current DATABASE_URL:', config.DATABASE_URL ? '***' + config.DATABASE_URL.split('@')[1] : 'NOT SET');
-  if (config.NODE_ENV === 'production') {
-    process.exit(1);
-  }
-} else {
-  console.log('✅ DATABASE_URL validation passed - PostgreSQL connection detected');
-} */
-
-console.log('🔧 DATABASE_URL:', config.DATABASE_URL ? 'SET' : 'NOT SET');
-
-// Webhook URL validation
-if (config.NODE_ENV === 'production' && !config.WEBHOOK_URL.includes('https')) {
-  console.warn('⚠️  WARNING: Production webhook URL should use HTTPS for security');
-}
-
-// Production optimizations
-if (config.NODE_ENV === 'production') {
-  config.CACHE_ENABLED = true;
-  config.REAL_TIME_NOTIFICATIONS = true;
-  config.AUTO_RESTART_BOTS = true;
-  config.PERSIST_BOT_SESSIONS = true;
-  config.AUTO_RECONNECT_BOTS = true;
-}
-
 // ==================== EXPORT CONFIGURATION ====================
 
 console.log('🔧 Loading environment configuration...');
+
+// Enhanced debugging for DATABASE_URL
+console.log('🔍 DATABASE_URL Debug:');
+console.log('   process.env.DATABASE_URL exists:', !!process.env.DATABASE_URL);
+console.log('   config.DATABASE_URL exists:', !!config.DATABASE_URL);
+if (process.env.DATABASE_URL) {
+  console.log('   DATABASE_URL length:', process.env.DATABASE_URL.length);
+  console.log('   DATABASE_URL starts with:', process.env.DATABASE_URL.substring(0, 20) + '...');
+}
+
 console.log('✅ Environment loaded:');
 console.log('   NODE_ENV:', config.NODE_ENV);
 console.log('   PORT:', config.PORT);
@@ -128,5 +94,36 @@ console.log('   BOT_TOKEN:', config.BOT_TOKEN ? '***' + config.BOT_TOKEN.slice(-
 console.log('   MAIN_BOT:', config.MAIN_BOT_NAME);
 console.log('   DATABASE: POSTGRESQL');
 console.log('   DATABASE_URL:', config.DATABASE_URL ? '***' + config.DATABASE_URL.split('@')[1] : 'NOT SET');
+
+// ==================== VALIDATION & POST-PROCESSING ====================
+
+// Better DATABASE_URL handling
+if (!config.DATABASE_URL) {
+  console.error('❌ DATABASE_URL is required but not set');
+  console.error('💡 Check Railway environment variables:');
+  console.error('   - Go to your project → Settings → Variables');
+  console.error('   - Ensure DATABASE_URL is set');
+  
+  // Try to get from Railway's default environment variable
+  if (process.env.RAILWAY_DATABASE_URL) {
+    console.log('🔧 Using RAILWAY_DATABASE_URL instead');
+    config.DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
+  } else {
+    console.error('💥 No DATABASE_URL available');
+    if (config.NODE_ENV === 'production') {
+      process.exit(1);
+    }
+  }
+}
+
+// Webhook URL fix for Railway
+if (config.NODE_ENV === 'production' && !config.WEBHOOK_URL.includes('https')) {
+  console.warn('⚠️  WARNING: Production webhook URL should use HTTPS for security');
+  // Auto-fix for Railway
+  if (process.env.RAILWAY_STATIC_URL) {
+    config.WEBHOOK_URL = `https://${process.env.RAILWAY_STATIC_URL}`;
+    console.log('🔧 Auto-fixed WEBHOOK_URL for Railway:', config.WEBHOOK_URL);
+  }
+}
 
 module.exports = config;
