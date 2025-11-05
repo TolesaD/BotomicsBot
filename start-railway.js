@@ -10,9 +10,9 @@ console.log('🔧 PRODUCTION: Setting environment variables (Railway workaround)
 
 const productionConfig = {
   // REQUIRED - Core configuration
-  DATABASE_URL: 'postgresql://postgres:kLpoExiXkvPvBYaSERToYbaavbHiawPs@trolley.proxy.rlwy.net:43180/railway',
-  BOT_TOKEN: '7983296108:AAHcJ4c8Q2PgpI4pJz0Q4qX4Q4qX4Q4qX4Q4',
-  ENCRYPTION_KEY: 'your-32-character-super-secure-encryption-key-here',
+  DATABASE_URL: 'postgresql://postgres:oVLrRsVtHexHeuAkFSWaXGheLOoHhHvB@yamanote.proxy.rlwy.net:57378/railway',
+  BOT_TOKEN: '7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI',
+  ENCRYPTION_KEY: 'W370NNal3+hm8KmDwQVOd2tzhW8S5Ma+Fk8MvVMK5QU=',
   
   // OPTIONAL - With defaults
   MAIN_BOT_NAME: 'MarCreatorBot',
