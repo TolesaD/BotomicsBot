@@ -1,21 +1,70 @@
-// start-railway.js - WITH REAL VALUES
+// start-railway.js - PRODUCTION VERSION
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
-console.log('🔧 TEMPORARY: Using hardcoded values for testing');
+console.log('🔧 PRODUCTION: Using Railway environment variables');
 
-// REPLACE THESE WITH YOUR ACTUAL VALUES
-process.env.DATABASE_URL = 'postgresql://postgres:kLpoExiXkvPvBYaSERToYbaavbHiawPs@trolley.proxy.rlwy.net:43180/railway';
-process.env.BOT_TOKEN = '7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI'; // ← REPLACE WITH REAL TOKEN
-process.env.ENCRYPTION_KEY = 'W370NNal3+hm8KmDwQVOd2tzhW8S5Ma+Fk8MvVMK5QU='; // ← REPLACE
-process.env.MAIN_BOT_NAME = 'MarCreatorBot';
-process.env.PORT = '8080';
-process.env.NODE_ENV = 'production';
+// Validate critical environment variables
+const requiredVars = [
+  'BOT_TOKEN',
+  'ENCRYPTION_KEY', 
+  'DATABASE_URL',
+  'MAIN_BOT_NAME'
+];
 
-console.log('✅ DATABASE_URL: SET (hardcoded)');
-console.log('✅ BOT_TOKEN: SET (hardcoded)'); 
-console.log('✅ ENCRYPTION_KEY: SET (hardcoded)');
-console.log('✅ All environment variables are set (temporary)');
+console.log('🔍 Validating environment variables...');
+let allSet = true;
+
+requiredVars.forEach(varName => {
+  const value = process.env[varName];
+  if (!value) {
+    console.error(`❌ ${varName}: NOT SET`);
+    allSet = false;
+  } else {
+    // Mask sensitive values for logging
+    const displayValue = varName.includes('TOKEN') || varName.includes('KEY') 
+      ? '***' + value.slice(-4)
+      : value;
+    console.log(`✅ ${varName}: SET (${displayValue})`);
+  }
+});
+
+if (!allSet) {
+  console.error('\n💥 CRITICAL: Missing required environment variables');
+  console.error('💡 Please set these in Railway project → Settings → Variables:');
+  requiredVars.forEach(varName => {
+    if (!process.env[varName]) {
+      console.error(`   - ${varName}`);
+    }
+  });
+  process.exit(1);
+}
+
+// Validate BOT_TOKEN format
+const botToken = process.env.BOT_TOKEN;
+if (!botToken.match(/^\d+:[a-zA-Z0-9_-]+$/)) {
+  console.error('❌ BOT_TOKEN: Invalid format. Should be: 1234567890:ABCdefGHIjkl...');
+  process.exit(1);
+}
+
+// Validate ENCRYPTION_KEY length
+const encryptionKey = process.env.ENCRYPTION_KEY;
+if (encryptionKey.length < 32) {
+  console.error('❌ ENCRYPTION_KEY: Too short. Minimum 32 characters required.');
+  process.exit(1);
+}
+
+console.log('✅ All environment variables validated successfully');
 console.log('🏃 Starting application from src/app.js...');
+
+// Enable production error handling
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  process.exit(1);
+});
 
 try {
   require('./src/app.js');

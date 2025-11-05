@@ -24,7 +24,7 @@ try {
 
 console.log('   Connecting to:', dbLogInfo);
 
-// Create Sequelize instance
+// Create Sequelize instance with production settings
 const sequelize = new Sequelize(DATABASE_URL, {
   dialect: 'postgres',
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
@@ -39,6 +39,10 @@ const sequelize = new Sequelize(DATABASE_URL, {
       require: true,
       rejectUnauthorized: false
     } : false
+  },
+  retry: {
+    max: 3,
+    timeout: 30000
   }
 });
 

@@ -14,7 +14,8 @@
     "set-commands": "node scripts/setCommands.js",
     "set-mini-commands": "node scripts/setMiniBotCommands.js",
     "cleanup": "node scripts/cleanup.js",
-    "healthcheck": "node scripts/healthcheck.js"
+    "healthcheck": "node scripts/healthcheck.js",
+    "railway": "node start-railway.js"
   },
   "keywords": [
     "telegram",
@@ -41,6 +42,6 @@
     "nodemon": "^3.0.2"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   }
 }
