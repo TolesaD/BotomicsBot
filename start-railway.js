@@ -1,125 +1,91 @@
-// start-railway.js - ENHANCED DEBUG
+// start-railway.js - PRODUCTION VERSION
 console.log('🚀 MarCreatorBot - Railway Startup');
 console.log('===================================');
-console.log('🔧 ENHANCED DEBUG: Railway Environment Analysis');
+console.log('🔧 PRODUCTION: Railway Environment');
 
-// Get all environment variables
-const allEnvVars = process.env;
-console.log('\n📋 ALL AVAILABLE ENVIRONMENT VARIABLES:');
-Object.keys(allEnvVars)
-  .sort()
-  .forEach(key => {
-    const value = allEnvVars[key];
-    // Show all variables, but mask sensitive ones
-    if (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET') || key.includes('PASSWORD')) {
-      console.log(`   ${key}: ***${value ? value.slice(-4) : 'NULL'}`);
-    } else {
-      console.log(`   ${key}: ${value || 'NULL'}`);
-    }
-  });
+// Railway automatically provides these for PostgreSQL
+const DATABASE_URL = process.env.DATABASE_URL;
 
-// Check for common Railway variable patterns
-console.log('\n🔍 CHECKING RAILWAY SPECIFIC VARIABLES:');
-const railwayVars = Object.keys(allEnvVars).filter(key => 
-  key.includes('RAILWAY') || 
-  key.includes('DATABASE') || 
-  key.includes('BOT') || 
-  key.includes('ENCRYPTION') ||
-  key.includes('TOKEN')
-);
-
-railwayVars.forEach(key => {
-  const value = allEnvVars[key];
-  const displayValue = key.includes('TOKEN') || key.includes('KEY') 
-    ? '***' + (value ? value.slice(-4) : 'NULL')
-    : value || 'NULL';
-  console.log(`   ${key}: ${displayValue}`);
-});
-
-// Check if we're running in Railway
-console.log('\n🏗️  RAILWAY ENVIRONMENT CHECK:');
+console.log('🔍 Checking Railway Environment:');
 console.log(`   RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT || 'NOT SET'}`);
-console.log(`   RAILWAY_SERVICE_NAME: ${process.env.RAILWAY_SERVICE_NAME || 'NOT SET'}`);
-console.log(`   RAILWAY_PROJECT_NAME: ${process.env.RAILWAY_PROJECT_NAME || 'NOT SET'}`);
-console.log(`   RAILWAY_GIT_COMMIT_SHA: ${process.env.RAILWAY_GIT_COMMIT_SHA || 'NOT SET'}`);
+console.log(`   DATABASE_URL: ${DATABASE_URL ? 'SET (' + DATABASE_URL.length + ' chars)' : 'NOT SET'}`);
 
-// Try to resolve variables with different naming strategies
-console.log('\n🔄 ATTEMPTING VARIABLE RESOLUTION:');
-
-// Strategy 1: Direct access
-const botToken = process.env.BOT_TOKEN;
-console.log(`   Strategy 1 - BOT_TOKEN: ${botToken ? 'FOUND' : 'NOT FOUND'}`);
-
-// Strategy 2: Case insensitive search
-const caseInsensitiveVars = {};
-Object.keys(allEnvVars).forEach(key => {
-  caseInsensitiveVars[key.toLowerCase()] = allEnvVars[key];
-});
-
-const botTokenLower = caseInsensitiveVars['bot_token'];
-console.log(`   Strategy 2 - bot_token (lowercase): ${botTokenLower ? 'FOUND' : 'NOT FOUND'}`);
-
-// Strategy 3: Pattern matching
-const tokenVars = Object.keys(allEnvVars).filter(key => 
-  key.toLowerCase().includes('token') && 
-  !key.toLowerCase().includes('railway')
-);
-console.log(`   Strategy 3 - Token-like variables: ${tokenVars.join(', ') || 'NONE'}`);
-
-// Final resolution attempt
-const resolvedConfig = {
-  BOT_TOKEN: process.env.BOT_TOKEN || 
-             caseInsensitiveVars['bot_token'] ||
-             (tokenVars.length > 0 ? allEnvVars[tokenVars[0]] : null),
-  
-  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || 
-                  caseInsensitiveVars['encryption_key'] ||
-                  process.env.ENCRYPTIONKEY,
-  
-  DATABASE_URL: process.env.DATABASE_URL || 
-                process.env.RAILWAY_DATABASE_URL ||
-                process.env.DATABASE_PRIVATE_URL ||
-                process.env.DATABASE_CONNECTION_URL,
-  
-  MAIN_BOT_NAME: process.env.MAIN_BOT_NAME || 'MarCreatorBot'
-};
-
-console.log('\n🎯 FINAL RESOLVED CONFIGURATION:');
-console.log(`   BOT_TOKEN: ${resolvedConfig.BOT_TOKEN ? 'SET (' + resolvedConfig.BOT_TOKEN.length + ' chars)' : 'NOT SET'}`);
-console.log(`   ENCRYPTION_KEY: ${resolvedConfig.ENCRYPTION_KEY ? 'SET (' + resolvedConfig.ENCRYPTION_KEY.length + ' chars)' : 'NOT SET'}`);
-console.log(`   DATABASE_URL: ${resolvedConfig.DATABASE_URL ? 'SET (' + resolvedConfig.DATABASE_URL.length + ' chars)' : 'NOT SET'}`);
-console.log(`   MAIN_BOT_NAME: ${resolvedConfig.MAIN_BOT_NAME}`);
-
-// Check if we can proceed
-const canProceed = resolvedConfig.BOT_TOKEN && resolvedConfig.ENCRYPTION_KEY && resolvedConfig.DATABASE_URL;
-
-if (!canProceed) {
-  console.error('\n💥 CRITICAL: Cannot start application - missing required variables');
-  console.error('\n🔧 TROUBLESHOOTING STEPS:');
-  console.error('   1. Go to Railway → Your Service → Variables');
-  console.error('   2. Verify variables are spelled EXACTLY as:');
-  console.error('      - BOT_TOKEN');
-  console.error('      - ENCRYPTION_KEY'); 
-  console.error('      - DATABASE_URL');
-  console.error('      - MAIN_BOT_NAME');
-  console.error('   3. Check for typos or extra spaces');
-  console.error('   4. Try deleting and recreating the variables');
-  console.error('   5. Contact Railway support if issue persists');
-  
+if (!DATABASE_URL) {
+  console.error('❌ DATABASE_URL not found - Railway PostgreSQL not configured');
+  console.error('💡 Please add PostgreSQL plugin in Railway dashboard');
   process.exit(1);
 }
 
-// Set resolved config to process.env
-console.log('\n✅ All variables resolved successfully!');
-Object.keys(resolvedConfig).forEach(key => {
-  if (resolvedConfig[key] && !process.env[key]) {
-    process.env[key] = resolvedConfig[key];
-  }
-});
+// For custom variables, we need to handle Railway's variable propagation issue
+// Try multiple strategies to get custom variables
+console.log('\n🔄 Resolving custom environment variables...');
+
+// Strategy 1: Direct access (should work if Railway fixes their bug)
+let BOT_TOKEN = process.env.BOT_TOKEN;
+let ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+let MAIN_BOT_NAME = process.env.MAIN_BOT_NAME || 'MarCreatorBot';
+
+console.log(`   Strategy 1 - BOT_TOKEN: ${BOT_TOKEN ? 'SET' : 'NOT SET'}`);
+console.log(`   Strategy 1 - ENCRYPTION_KEY: ${ENCRYPTION_KEY ? 'SET' : 'NOT SET'}`);
+
+// Strategy 2: Check if variables exist but are empty (Railway bug)
+if (!BOT_TOKEN && process.env.BOT_TOKEN === '') {
+  console.log('⚠️  BOT_TOKEN exists but is empty string (Railway bug)');
+}
+
+if (!ENCRYPTION_KEY && process.env.ENCRYPTION_KEY === '') {
+  console.log('⚠️  ENCRYPTION_KEY exists but is empty string (Railway bug)');
+}
+
+// Final validation
+if (!BOT_TOKEN) {
+  console.error('\n❌ BOT_TOKEN is required but not set');
+  console.error('💡 Railway Variables Setup:');
+  console.error('   1. Go to Railway → Your Service → Variables');
+  console.error('   2. Add: BOT_TOKEN=your_bot_token_here');
+  console.error('   3. Add: ENCRYPTION_KEY=your_32_char_key_here');
+  console.error('   4. Redeploy after setting variables');
+  process.exit(1);
+}
+
+if (!ENCRYPTION_KEY) {
+  console.error('\n❌ ENCRYPTION_KEY is required but not set');
+  console.error('💡 This is needed to encrypt bot tokens in the database');
+  process.exit(1);
+}
+
+// Validate encryption key length
+if (ENCRYPTION_KEY.length < 32) {
+  console.error('❌ ENCRYPTION_KEY must be at least 32 characters');
+  process.exit(1);
+}
+
+console.log('\n✅ All required variables resolved:');
+console.log(`   DATABASE_URL: SET (PostgreSQL connected)`);
+console.log(`   BOT_TOKEN: SET (${BOT_TOKEN.length} chars)`);
+console.log(`   ENCRYPTION_KEY: SET (${ENCRYPTION_KEY.length} chars)`);
+console.log(`   MAIN_BOT_NAME: ${MAIN_BOT_NAME}`);
+console.log(`   NODE_ENV: production`);
+
+// Ensure all required variables are set in process.env
+process.env.BOT_TOKEN = BOT_TOKEN;
+process.env.ENCRYPTION_KEY = ENCRYPTION_KEY;
+process.env.DATABASE_URL = DATABASE_URL;
+process.env.MAIN_BOT_NAME = MAIN_BOT_NAME;
+process.env.NODE_ENV = 'production';
 
 console.log('🏃 Starting application from src/app.js...');
 
-// Start the application
+// Production error handling
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  setTimeout(() => process.exit(1), 1000);
+});
+
 try {
   require('./src/app.js');
 } catch (error) {
