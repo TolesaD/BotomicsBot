@@ -44,4 +44,70 @@ const sequelize = new Sequelize(DATABASE_URL, {
 
 console.log('✅ Database configured successfully');
 
-module.exports = { sequelize };
+// Database connection function (required by src/app.js)
+async function connectDB() {
+  try {
+    console.log('🗄️ Establishing database connection...');
+    await sequelize.authenticate();
+    console.log('✅ Database connection established successfully');
+    
+    // Import models after sequelize is configured
+    const { Bot, User, Admin, Feedback, UserLog, BroadcastHistory } = require('../models');
+    
+    // Sync all models
+    await sequelize.sync({ alter: true });
+    console.log('✅ All database models synchronized');
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error.message);
+    return false;
+  }
+}
+
+// Health check function (required by src/app.js)
+async function healthCheck() {
+  try {
+    await sequelize.authenticate();
+    
+    // Import models for counting
+    const { Bot } = require('../models');
+    
+    // Check if we can query the database
+    const totalBots = await Bot.count();
+    const activeBots = await Bot.count({ where: { is_active: true } });
+    
+    return {
+      healthy: true,
+      bots: {
+        total: totalBots,
+        active: activeBots
+      },
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('❌ Database health check failed:', error.message);
+    return {
+      healthy: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+// Disconnect function
+async function disconnectDB() {
+  try {
+    await sequelize.close();
+    console.log('✅ Database connection closed');
+  } catch (error) {
+    console.error('❌ Error closing database connection:', error);
+  }
+}
+
+module.exports = {
+  sequelize,
+  connectDB,
+  healthCheck,
+  disconnectDB
+};
