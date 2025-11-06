@@ -1,19 +1,37 @@
-/**
- * Railway Startup Script - Handles auto-quoting and validates envs
- */
+// start-railway.js - RAILWAY NATIVE
+console.log('🚀 MarCreatorBot - Railway Native Mode');
+console.log('=====================================');
 
-console.log('🚀 MarCreatorBot - Railway Startup');
-console.log('===================================');
+// Railway automatically provides these
+console.log('🔍 Railway Auto-Provisioned:');
+console.log('   DATABASE_URL:', process.env.DATABASE_URL ? 'AUTO-PROVIDED' : 'MISSING');
+console.log('   RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
+console.log('   RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL);
 
-// Load environment config
-const config = require('./config/environment');
+// Check only what Railway should provide
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL not provided by Railway');
+  console.error('💡 Railway should auto-provision this');
+  process.exit(1);
+}
 
-// Debug logs to confirm everything is cleaned
-console.log('🔍 DEBUG Cleaned DATABASE_URL:', config.DATABASE_URL);
-console.log('🔍 DEBUG Cleaned BOT_TOKEN:', config.BOT_TOKEN ? 'SET' : 'MISSING');
-console.log('🔍 DEBUG Cleaned ENCRYPTION_KEY:', config.ENCRYPTION_KEY ? 'SET' : 'MISSING');
-console.log('✅ All environment variables are validated and ready');
+// Check user-provided variables
+const userVars = ['BOT_TOKEN', 'ENCRYPTION_KEY'];
+const missingUserVars = userVars.filter(varName => !process.env[varName]);
 
-// Start the main application
+if (missingUserVars.length > 0) {
+  console.error('❌ User variables missing:', missingUserVars.join(', '));
+  console.error('\n🚨 HOW TO FIX IN RAILWAY:');
+  console.error('   1. Go to your SERVICE (click on service name)');
+  console.error('   2. Settings → Variables');
+  console.error('   3. Add these EXACT names:');
+  missingUserVars.forEach(varName => console.error(`      - ${varName}`));
+  console.error('   4. Make sure they are at SERVICE level (not Project)');
+  console.error('   5. Redeploy after adding');
+  process.exit(1);
+}
+
+console.log('✅ All variables available');
 console.log('🏃 Starting application...');
+
 require('./src/app.js');
