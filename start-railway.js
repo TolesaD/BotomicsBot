@@ -1,93 +1,73 @@
-// Add this at the very top of start-railway.js
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-// start-railway.js - FIXED VERSION
-console.log('🚀 MarCreatorBot - FIXED STARTUP MODE');
-console.log('======================================');
-console.log('🔧 FORCING APP STARTUP WITH HARDCODED VALUES');
+// start-railway.js - PRODUCTION VERSION
+console.log('🚀 MarCreatorBot - Production Startup');
+console.log('=====================================');
+console.log('🔧 Using Railway Environment Variables');
 
-// HARDCODED VALUES FOR TESTING
-process.env.DATABASE_URL = 'postgresql://postgres:kLpoExiXkvPvBYaSERToYbaavbHiawPs@trolley.proxy.rlwy.net:43180/railway';
-process.env.BOT_TOKEN = '7983296108:AAH8Dj_5WfhPN7g18jFI2VsexzJAiCjPgpI';
-process.env.ENCRYPTION_KEY = 'W370NNal3+hm8KmDwQVOd2tzhW8S5Ma+Fk8MvVMK5QU=';
-process.env.MAIN_BOT_NAME = 'MarCreatorBot';
-process.env.PORT = '8080';
-process.env.NODE_ENV = 'production';
+// Validate critical environment variables
+const requiredEnvVars = ['BOT_TOKEN', 'DATABASE_URL', 'ENCRYPTION_KEY'];
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
-console.log('✅ DATABASE_URL: SET (hardcoded)');
-console.log('✅ BOT_TOKEN: SET (hardcoded)'); 
-console.log('✅ ENCRYPTION_KEY: SET (hardcoded)');
-console.log('✅ PORT: 8080 (hardcoded)');
-console.log('✅ NODE_ENV: production (hardcoded)');
+if (missingVars.length > 0) {
+  console.error('❌ Missing required environment variables:');
+  missingVars.forEach(varName => console.error(`   - ${varName}`));
+  console.error('💡 Please set these in your Railway project variables');
+  process.exit(1);
+}
 
-// TEST TELEGRAM API CONNECTION IMMEDIATELY
-console.log('📡 Testing Telegram API connection before starting app...');
-const testToken = process.env.BOT_TOKEN;
+console.log('✅ Environment variables validated:');
+console.log(`   BOT_TOKEN: ${process.env.BOT_TOKEN ? '***' + process.env.BOT_TOKEN.slice(-6) : 'MISSING'}`);
+console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? '***' + process.env.DATABASE_URL.split('@')[1] : 'MISSING'}`);
+console.log(`   ENCRYPTION_KEY: ${process.env.ENCRYPTION_KEY ? 'SET' : 'MISSING'}`);
+console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'production'}`);
+console.log(`   PORT: ${process.env.PORT || 8080}`);
 
+// Test Telegram connection
 const testTelegramConnection = async () => {
   try {
-    console.log('   Making API call to Telegram...');
-    const response = await fetch(`https://api.telegram.org/bot${testToken}/getMe`);
+    console.log('📡 Testing Telegram API connection...');
+    const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+    const response = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getMe`);
     const data = await response.json();
     
     if (data.ok) {
       console.log('✅ Telegram API connection SUCCESSFUL:');
-      console.log('   Bot Username:', data.result.username);
-      console.log('   Bot Name:', data.result.first_name);
-      console.log('   Bot ID:', data.result.id);
-      console.log('   Can Join Groups:', data.result.can_join_groups);
-      console.log('   Can Read Messages:', data.result.can_read_all_group_messages);
+      console.log(`   Bot: @${data.result.username} (${data.result.first_name})`);
+      console.log(`   ID: ${data.result.id}`);
     } else {
       console.error('❌ Telegram API connection FAILED:');
-      console.error('   Error:', data.description);
-      console.error('   Error Code:', data.error_code);
-      
-      if (data.error_code === 404) {
-        console.error('💡 BOT TOKEN IS INVALID OR REVOKED');
-      } else if (data.error_code === 401) {
-        console.error('💡 UNAUTHORIZED - TOKEN IS WRONG');
-      }
+      console.error(`   Error: ${data.description} (Code: ${data.error_code})`);
+      process.exit(1);
     }
   } catch (error) {
     console.error('❌ Network error testing Telegram API:');
-    console.error('   Error:', error.message);
-    console.error('💡 Railway networking issue or DNS problem');
+    console.error(`   Error: ${error.message}`);
+    console.log('⚠️  Continuing startup despite network error...');
   }
 };
 
-// FIXED: Force the application to start
+// Start application
 (async () => {
   await testTelegramConnection();
   
-  console.log('🏃 FORCING APPLICATION START...');
-  console.log('🤖 EXPECTED BOT BEHAVIOR:');
-  console.log('   1. Main bot should connect to Telegram');
-  console.log('   2. Should see "MetaBot Creator MAIN BOT is now RUNNING!"');
-  console.log('   3. Mini-bots should initialize from database');
+  console.log('🏃 Starting main application...');
+  console.log('🤖 Expected behavior:');
+  console.log('   1. Main bot connects to Telegram');
+  console.log('   2. Database connection established');
+  console.log('   3. Mini-bots initialize automatically');
+  console.log('   4. Health checks start running');
   
   try {
-    // Import the app and manually start it
-    const MetaBotCreator = require('./src/app.js');
+    // Import and start the main application
+    const { startApplication } = require('./src/app.js');
+    await startApplication();
     
-    console.log('🔧 Manually starting MetaBotCreator...');
-    const app = new MetaBotCreator();
-    await app.initialize();
-    app.start();
-    
-    console.log('✅ Application manually started successfully!');
+    console.log('✅ Application started successfully!');
+    console.log('🎉 MarCreatorBot is now LIVE in production!');
     
   } catch (error) {
     console.error('❌ Failed to start application:');
-    console.error('   Error:', error.message);
-    console.error('   Stack:', error.stack);
-    
-    // Try alternative startup method
-    console.log('🔄 Trying alternative startup method...');
-    try {
-      const { startApplication } = require('./src/app.js');
-      await startApplication();
-    } catch (error2) {
-      console.error('❌ Alternative startup also failed:', error2.message);
-      process.exit(1);
-    }
+    console.error(`   Error: ${error.message}`);
+    console.error('   Stack trace:', error.stack);
+    process.exit(1);
   }
 })();
