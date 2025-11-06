@@ -1,70 +1,51 @@
-﻿console.log('🔧 CRITICAL: This version handles Railway auto-quoting and undefined envs');
+﻿console.log('🔧 CRITICAL: Railway environment variables auto-quote handler active');
 
-// Utility: strip quotes and invalid placeholders
+// ----------------- Helper: Clean env variables -----------------
 function cleanEnv(value) {
   if (!value) return undefined;
-  const cleaned = value.replace(/^['"]|['"]$/g, '').trim();
-  if (cleaned.toLowerCase() === 'undefined' || cleaned.toLowerCase() === 'null' || cleaned === '') {
+  const trimmed = value.replace(/^["']|["']$/g, '').trim();
+  if (trimmed.toLowerCase() === 'undefined' || trimmed.toLowerCase() === 'null' || trimmed === '') {
     return undefined;
   }
-  return cleaned;
+  return trimmed;
 }
 
-// Normalize all possible sources
-let rawDatabaseUrl = cleanEnv(process.env.DATABASE_URL) || cleanEnv(process.env.RAILWAY_DATABASE_URL);
-let rawBotToken = cleanEnv(process.env.BOT_TOKEN);
-let rawEncryptionKey = cleanEnv(process.env.ENCRYPTION_KEY);
-
+// ----------------- Load and sanitize environment variables -----------------
 const config = {
-  // ============ BOT CONFIGURATION ============
-  BOT_TOKEN: rawBotToken,
-  MAIN_BOT_USERNAME: process.env.MAIN_BOT_USERNAME || '@MarCreatorBot',
-  MAIN_BOT_NAME: process.env.MAIN_BOT_NAME || 'MarCreatorBot',
-  WEBHOOK_URL: process.env.WEBHOOK_URL || `https://${process.env.RAILWAY_STATIC_URL || `localhost:${process.env.PORT || 3000}`}`,
-
-  // ============ DATABASE ============
-  DATABASE_URL: rawDatabaseUrl,
-  DATABASE_DIALECT: 'postgres',
-
-  // ============ DATABASE POOL ============
-  DATABASE_POOL_MAX: parseInt(process.env.DATABASE_POOL_MAX) || 20,
-  DATABASE_POOL_IDLE: parseInt(process.env.DATABASE_POOL_IDLE) || 30000,
-  DATABASE_POOL_ACQUIRE: parseInt(process.env.DATABASE_POOL_ACQUIRE) || 60000,
-
-  // ============ SECURITY ============
-  ENCRYPTION_KEY: rawEncryptionKey,
-
-  // ============ SERVER ============
-  PORT: process.env.PORT || 3000,
-  NODE_ENV: process.env.NODE_ENV || 'production',
-  HOST: process.env.HOST || '0.0.0.0',
-
-  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  BOT_TOKEN: cleanEnv(process.env.BOT_TOKEN),
+  DATABASE_URL: cleanEnv(process.env.DATABASE_URL) || cleanEnv(process.env.RAILWAY_DATABASE_URL),
+  ENCRYPTION_KEY: cleanEnv(process.env.ENCRYPTION_KEY),
+  MAIN_BOT_NAME: cleanEnv(process.env.MAIN_BOT_NAME) || 'MarCreatorBot',
+  MAIN_BOT_USERNAME: cleanEnv(process.env.MAIN_BOT_USERNAME) || '@MarCreatorBot',
+  NODE_ENV: cleanEnv(process.env.NODE_ENV) || 'production',
+  PORT: parseInt(cleanEnv(process.env.PORT)) || 3000,
+  SUPPORT_USERNAME: cleanEnv(process.env.SUPPORT_USERNAME) || 'MarCreatorSupportBot',
+  
+  // Database pool settings
+  DATABASE_POOL_MAX: parseInt(cleanEnv(process.env.DATABASE_POOL_MAX)) || 20,
+  DATABASE_POOL_IDLE: parseInt(cleanEnv(process.env.DATABASE_POOL_IDLE)) || 30000,
+  DATABASE_POOL_ACQUIRE: parseInt(cleanEnv(process.env.DATABASE_POOL_ACQUIRE)) || 60000,
 };
 
-// ============ DEBUG OUTPUT ============
-console.log('✅ NODE_ENV:', config.NODE_ENV);
-console.log('✅ PORT:', config.PORT);
-console.log('🔧 BOT_TOKEN length:', config.BOT_TOKEN ? config.BOT_TOKEN.length : 'MISSING');
-console.log('🔧 ENCRYPTION_KEY length:', config.ENCRYPTION_KEY ? config.ENCRYPTION_KEY.length : 'MISSING');
-console.log('🔧 DATABASE_URL:', config.DATABASE_URL ? 'SET' : 'NOT SET');
-
-// Fallback check
+// ----------------- Validation -----------------
 if (!config.DATABASE_URL) {
-  console.error('❌ DATABASE_URL missing — checking Railway fallback...');
-  if (process.env.RAILWAY_DATABASE_URL) {
-    config.DATABASE_URL = cleanEnv(process.env.RAILWAY_DATABASE_URL);
-    console.log('🔧 Using RAILWAY_DATABASE_URL fallback');
-  } else {
-    console.error('💥 No valid DATABASE_URL found. Exiting...');
-    process.exit(1);
-  }
+  console.error('❌ DATABASE_URL is missing or invalid. Check Railway variables.');
+  process.exit(1);
+}
+if (!config.BOT_TOKEN) {
+  console.error('❌ BOT_TOKEN is missing or invalid. Check Railway variables.');
+  process.exit(1);
+}
+if (!config.ENCRYPTION_KEY) {
+  console.error('❌ ENCRYPTION_KEY is missing or invalid. Check Railway variables.');
+  process.exit(1);
 }
 
-// Final sanity log
-console.log(
-  '🔍 Final DATABASE_URL before app start =',
-  config.DATABASE_URL ? config.DATABASE_URL.substring(0, 30) + '...' : 'undefined'
-);
+// ----------------- Debug -----------------
+console.log('✅ NODE_ENV:', config.NODE_ENV);
+console.log('✅ PORT:', config.PORT);
+console.log('🔧 BOT_TOKEN length:', config.BOT_TOKEN.length);
+console.log('🔧 ENCRYPTION_KEY length:', config.ENCRYPTION_KEY.length);
+console.log('🔧 DATABASE_URL length:', config.DATABASE_URL.length);
 
 module.exports = config;
