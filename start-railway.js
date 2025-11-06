@@ -1,3 +1,5 @@
+// Add this at the very top of start-railway.js
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 // start-railway.js - FIXED VERSION
 console.log('🚀 MarCreatorBot - FIXED STARTUP MODE');
 console.log('======================================');
