@@ -4,18 +4,18 @@
   "description": "A Telegram bot that allows users to create and manage their own mini-bots",
   "main": "src/app.js",
   "scripts": {
-    "start": "node start-railway.js",
+    "start": "node start-cpanel.js",
     "dev": "nodemon src/app.js",
-    "debug": "node --inspect src/app.js",
-    "setup": "node database/setup.js",
-    "test": "jest"
+    "test": "node test-local.js",
+    "test:quick": "node test-quick.js",
+    "setup": "node setup-local.js",
+    "cpanel": "node start-cpanel.js"
   },
   "keywords": [
     "telegram",
     "bot",
     "metabot",
-    "creator",
-    "mini-bot"
+    "creator"
   ],
   "author": "Your Name",
   "license": "MIT",
@@ -26,9 +26,6 @@
     "pg-hstore": "^2.3.4",
     "dotenv": "^16.4.5",
     "node-fetch": "^2.6.7"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,18 +1,26 @@
-﻿// Production optimizations
-if (process.env.NODE_ENV === 'production') {
-  require('events').EventEmitter.defaultMaxListeners = 20;
+﻿// src/app.js - Yegara.com cPanel Optimized
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+  console.log('🔧 Development mode - Loading .env file');
+} else {
+  console.log('🚀 Production mode - Using cPanel environment variables');
+}
+
+// Enhanced cPanel detection
+const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
+if (isCpanel) {
+  console.log('✅ Running on Yegara.com cPanel');
   
-  process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  });
+  // cPanel specific optimizations
+  process.env.NODE_ENV = 'production';
   
-  process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
-    // Don't exit immediately in production, try to log and continue
-    setTimeout(() => {
-      process.exit(1);
-    }, 1000);
-  });
+  // Ensure proper logging for cPanel
+  const fs = require('fs');
+  const path = require('path');
+  const logDir = path.join(process.cwd(), 'logs');
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
 }
 
 const { Telegraf, Markup } = require('telegraf');
@@ -29,6 +37,7 @@ class MetaBotCreator {
   constructor() {
     if (!config.BOT_TOKEN) {
       console.error('❌ BOT_TOKEN is not set');
+      console.error('💡 Set BOT_TOKEN in cPanel environment variables');
       process.exit(1);
     }
     
@@ -64,7 +73,7 @@ class MetaBotCreator {
       try {
         const userId = ctx.from.id;
         // Only allow bot owner to reinitialize
-        if (userId !== 1827785384) { // Replace with your user ID
+        if (userId !== 1827785384) {
           await ctx.reply('❌ Only bot owner can use this command.');
           return;
         }
@@ -456,7 +465,7 @@ class MetaBotCreator {
             } catch (healthError) {
               console.error('Health check failed:', healthError.message);
             }
-          }, 300000); // Every 5 minutes
+          }, 300000);
           
           // Initial health check after 60 seconds
           setTimeout(async () => {
@@ -472,8 +481,14 @@ class MetaBotCreator {
         }
       })
       .catch(error => {
-        console.error('❌ Failed to start main bot:', error);
-        console.log('💡 Check your BOT_TOKEN in Railway variables');
+        console.error('❌ Failed to start main bot:');
+        console.error('   Error:', error.message);
+        console.error('   Full error:', error);
+        console.error('💡 Possible causes:');
+        console.error('   1. Invalid bot token');
+        console.error('   2. Network issues blocking Telegram API');
+        console.error('   3. Bot token already in use elsewhere');
+        console.error('   4. Check BOT_TOKEN in cPanel environment variables');
         process.exit(1);
       });
     
@@ -512,7 +527,7 @@ class MetaBotCreator {
 async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
-    console.log('🚀 This version includes CRITICAL fixes for mini-bot persistence!');
+    console.log('🚀 Optimized for Yegara.com cPanel deployment');
     
     const app = new MetaBotCreator();
     await app.initialize();

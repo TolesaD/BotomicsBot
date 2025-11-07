@@ -1,17 +1,17 @@
-﻿// config/environment.js - PRODUCTION WORKING VERSION
+﻿// config/environment.js - YEGARA.COM CPANEL VERSION
 const config = {
   // ==================== BOT CONFIGURATION ====================
   BOT_TOKEN: process.env.BOT_TOKEN,
   MAIN_BOT_USERNAME: process.env.MAIN_BOT_USERNAME || '@MarCreatorBot',
   MAIN_BOT_NAME: process.env.MAIN_BOT_NAME || 'MarCreatorBot',
-  WEBHOOK_URL: process.env.WEBHOOK_URL || (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : `http://localhost:${process.env.PORT || 3000}`),
+  WEBHOOK_URL: process.env.WEBHOOK_URL || `http://localhost:${process.env.PORT || 3000}`,
   
   // ==================== DATABASE CONFIGURATION ====================
   DATABASE_URL: process.env.DATABASE_URL,
   DATABASE_DIALECT: 'postgres',
   
   // Connection pool settings
-  DATABASE_POOL_MAX: parseInt(process.env.DATABASE_POOL_MAX) || 20,
+  DATABASE_POOL_MAX: parseInt(process.env.DATABASE_POOL_MAX) || 10, // Lower for cPanel
   DATABASE_POOL_IDLE: parseInt(process.env.DATABASE_POOL_IDLE) || 30000,
   DATABASE_POOL_ACQUIRE: parseInt(process.env.DATABASE_POOL_ACQUIRE) || 60000,
   
@@ -78,10 +78,22 @@ const config = {
 // ==================== VALIDATION ====================
 console.log('🔧 Loading environment configuration...');
 
+// Detect cPanel environment
+const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
+if (isCpanel) {
+  console.log('✅ Running on Yegara.com cPanel');
+}
+
+console.log('   Environment:', config.NODE_ENV);
+console.log('   Port:', config.PORT);
+
 // Validate critical configuration
 if (!config.BOT_TOKEN) {
   console.error('❌ BOT_TOKEN is required but not set');
-  console.error('💡 Set BOT_TOKEN in Railway environment variables');
+  console.error('💡 How to fix on Yegara.com:');
+  console.error('   1. Go to cPanel → Environment Variables');
+  console.error('   2. Add BOT_TOKEN with your Telegram bot token');
+  console.error('   3. Redeploy your application');
   if (config.NODE_ENV === 'production') {
     process.exit(1);
   }
@@ -89,7 +101,10 @@ if (!config.BOT_TOKEN) {
 
 if (!config.ENCRYPTION_KEY) {
   console.error('❌ ENCRYPTION_KEY is required but not set');
-  console.error('💡 Set ENCRYPTION_KEY in Railway environment variables');
+  console.error('💡 How to fix on Yegara.com:');
+  console.error('   1. Go to cPanel → Environment Variables');
+  console.error('   2. Add ENCRYPTION_KEY with your encryption key');
+  console.error('   3. Redeploy your application');
   if (config.NODE_ENV === 'production') {
     process.exit(1);
   }
@@ -97,18 +112,20 @@ if (!config.ENCRYPTION_KEY) {
 
 if (!config.DATABASE_URL) {
   console.error('❌ DATABASE_URL is required but not set');
-  console.error('💡 Railway should auto-provision DATABASE_URL');
+  console.error('💡 How to fix on Yegara.com:');
+  console.error('   1. Go to cPanel → PostgreSQL Databases');
+  console.error('   2. Create a database and user');
+  console.error('   3. Add DATABASE_URL in Environment Variables');
+  console.error('   4. Format: postgresql://user:pass@host:port/dbname');
   if (config.NODE_ENV === 'production') {
     process.exit(1);
   }
 }
 
 console.log('✅ Environment configuration loaded:');
-console.log('   NODE_ENV:', config.NODE_ENV);
-console.log('   PORT:', config.PORT);
 console.log('   BOT_TOKEN:', config.BOT_TOKEN ? '***' + config.BOT_TOKEN.slice(-6) : 'NOT SET');
+console.log('   ENCRYPTION_KEY:', config.ENCRYPTION_KEY ? 'SET' : 'NOT SET');
+console.log('   DATABASE_URL:', config.DATABASE_URL ? 'SET' : 'NOT SET');
 console.log('   MAIN_BOT:', config.MAIN_BOT_NAME);
-console.log('   DATABASE: POSTGRESQL');
-console.log('   DATABASE_URL:', config.DATABASE_URL ? 'SET (' + config.DATABASE_URL.split('@')[1] + ')' : 'NOT SET');
 
 module.exports = config;

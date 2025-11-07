@@ -26,6 +26,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# cPanel specific
+public_html/
+cpanel/
+
 # Temporary
 tmp/
 temp/

@@ -1,0 +1,9 @@
+# .cpanel.yml - Yegara.com Deployment Configuration
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/maroseff/public_html/
+    - /bin/cp -R * $DEPLOYPATH
+    - cd $DEPLOYPATH
+    - npm install --production
+    - echo "✅ Deployment completed successfully"
