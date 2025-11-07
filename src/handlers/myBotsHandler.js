@@ -25,18 +25,20 @@ const myBotsHandler = async (ctx) => {
     // Get bot IDs from admin records
     const adminBotIds = adminRecords.map(record => record.bot_id);
     
-    // Fetch the actual bot records
+    // Fetch the actual bot records - FIXED: Remove complex where clause
     const adminBots = adminBotIds.length > 0 ? await Bot.findAll({
       where: { 
-        id: adminBotIds,
-        owner_id: { $ne: userId } // EXCLUDE owned bots
+        id: adminBotIds
       }
     }) : [];
     
-    console.log(`🔍 DEBUG: Found ${adminBots.length} admin-only bots`);
+    // Filter out owned bots in JavaScript instead of SQL
+    const filteredAdminBots = adminBots.filter(bot => bot.owner_id !== userId);
+    
+    console.log(`🔍 DEBUG: Found ${filteredAdminBots.length} admin-only bots (after filtering)`);
     
     // Combine without duplicates
-    const allBots = [...ownedBots, ...adminBots];
+    const allBots = [...ownedBots, ...filteredAdminBots];
     
     console.log(`🔍 DEBUG: Total unique bots in myBotsHandler: ${allBots.length}`);
     allBots.forEach(bot => {
