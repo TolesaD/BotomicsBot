@@ -2,7 +2,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/maroseff/public_html/
+    - export DEPLOYPATH=/home/maroseff/public_html/marcreator/
     - /bin/cp -R * $DEPLOYPATH
     - cd $DEPLOYPATH
     - npm install --production

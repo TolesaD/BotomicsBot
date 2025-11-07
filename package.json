@@ -4,12 +4,11 @@
   "description": "A Telegram bot that allows users to create and manage their own mini-bots",
   "main": "src/app.js",
   "scripts": {
-    "start": "node start-cpanel.js",
+    "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "node test-local.js",
     "test:quick": "node test-quick.js",
-    "setup": "node setup-local.js",
-    "cpanel": "node start-cpanel.js"
+    "setup": "node setup-local.js"
   },
   "keywords": [
     "telegram",
