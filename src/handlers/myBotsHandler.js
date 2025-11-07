@@ -5,63 +5,42 @@ const { escapeMarkdown } = require('../utils/helpers');
 const myBotsHandler = async (ctx) => {
   try {
     const userId = ctx.from.id;
-    console.log(`🔍 DEBUG myBotsHandler: Loading bots for user ${userId} (type: ${typeof userId})`);
+    console.log(`🔍 DEBUG myBotsHandler: Loading bots for user ${userId}`);
     
-    // Get bots where user is owner - FIXED: Handle string/number comparison
+    // Get bots where user is owner
     const ownedBots = await Bot.findAll({
       where: { owner_id: userId },
       order: [['created_at', 'DESC']]
     });
     
     console.log(`🔍 DEBUG: Found ${ownedBots.length} owned bots`);
-    ownedBots.forEach(bot => {
-      console.log(`   OWNED: ${bot.bot_name} (ID: ${bot.id}, Owner ID: ${bot.owner_id}, type: ${typeof bot.owner_id})`);
-    });
     
-    // Get admin records
+    // SIMPLIFIED: Get admin bots without complex includes
     const adminRecords = await Admin.findAll({
       where: { admin_user_id: userId }
     });
     
     console.log(`🔍 DEBUG: Found ${adminRecords.length} admin records`);
-    adminRecords.forEach(record => {
-      console.log(`   ADMIN RECORD: Bot ID: ${record.bot_id}, Admin User: ${record.admin_user_id}`);
-    });
     
-    // Get bot IDs from admin records (excluding owned bots) - FIXED: Proper string comparison
-    const adminBotIds = adminRecords
-      .map(record => record.bot_id)
-      .filter(botId => {
-        // EXCLUDE bots where user is already owner - FIXED: Use == for loose comparison
-        const isOwner = ownedBots.some(ownedBot => ownedBot.id == botId);
-        if (isOwner) {
-          console.log(`   EXCLUDING bot ${botId} - user is owner`);
-        }
-        return !isOwner;
-      });
+    // Get bot IDs from admin records
+    const adminBotIds = adminRecords.map(record => record.bot_id);
     
-    console.log(`🔍 DEBUG: Admin bot IDs after filtering: ${adminBotIds.join(', ')}`);
-    
-    // Fetch only non-owned admin bots
+    // Fetch the actual bot records
     const adminBots = adminBotIds.length > 0 ? await Bot.findAll({
       where: { 
-        id: adminBotIds
+        id: adminBotIds,
+        owner_id: { $ne: userId } // EXCLUDE owned bots
       }
     }) : [];
     
     console.log(`🔍 DEBUG: Found ${adminBots.length} admin-only bots`);
-    adminBots.forEach(bot => {
-      console.log(`   ADMIN: ${bot.bot_name} (ID: ${bot.id})`);
-    });
     
-    // Combine - no duplicates possible now
+    // Combine without duplicates
     const allBots = [...ownedBots, ...adminBots];
     
-    console.log(`🔍 DEBUG: Final unique bots: ${allBots.length}`);
+    console.log(`🔍 DEBUG: Total unique bots in myBotsHandler: ${allBots.length}`);
     allBots.forEach(bot => {
-      // FIXED: Use == for loose comparison to handle string vs number
-      const isOwner = bot.owner_id == userId;
-      console.log(`   FINAL: ${bot.bot_name} (ID: ${bot.id}) - Owner: ${isOwner} (owner_id: ${bot.owner_id} vs user_id: ${userId})`);
+      console.log(`   - ${bot.bot_name} (ID: ${bot.id}) - Owner: ${bot.owner_id === userId}`);
     });
     
     if (allBots.length === 0) {
@@ -80,8 +59,7 @@ const myBotsHandler = async (ctx) => {
       `*Total:* ${allBots.length} bots\n\n`;
     
     allBots.forEach((bot, index) => {
-      // FIXED: Use == for loose comparison
-      const isOwner = bot.owner_id == userId;
+      const isOwner = bot.owner_id === userId;
       const status = bot.is_active ? '✅ Active' : '❌ Inactive';
       message += `*${index + 1}. ${escapeMarkdown(bot.bot_name)}*\n` +
         `@${bot.bot_username} | ${status} | ${isOwner ? '👑 Owner' : '👥 Admin'}\n\n`;
