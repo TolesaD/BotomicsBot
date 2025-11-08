@@ -1,6 +1,6 @@
-// src/handlers/platformAdminHandler.js - COMPREHENSIVE PRODUCTION VERSION
+// src/handlers/platformAdminHandler.js - FIXED VERSION
 const { Markup } = require('telegraf');
-const { User, Bot, UserLog, Feedback, Admin, BroadcastHistory } = require('../models');
+const { User, Bot, UserLog, Feedback, BroadcastHistory } = require('../models');
 const { formatNumber, escapeMarkdown } = require('../utils/helpers');
 
 // Store admin management sessions
@@ -11,6 +11,13 @@ class PlatformAdminHandler {
   // Check if user is platform creator
   static isPlatformCreator(userId) {
     return userId === 1827785384; // Your user ID
+  }
+
+  // Safe answerCbQuery wrapper
+  static async safeAnswerCbQuery(ctx) {
+    if (ctx.updateType === 'callback_query') {
+      await ctx.answerCbQuery();
+    }
   }
 
   // Platform admin dashboard
@@ -80,15 +87,18 @@ class PlatformAdminHandler {
           parse_mode: 'Markdown',
           ...keyboard
         });
+        await ctx.answerCbQuery();
       } else {
         await ctx.replyWithMarkdown(dashboardMessage, keyboard);
       }
 
-      await ctx.answerCbQuery();
-
     } catch (error) {
       console.error('Platform dashboard error:', error);
-      await ctx.reply('❌ Error loading platform dashboard.');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading platform dashboard.');
+      } else {
+        await ctx.reply('❌ Error loading platform dashboard.');
+      }
     }
   }
 
@@ -96,7 +106,11 @@ class PlatformAdminHandler {
   static async userManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Access denied');
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
         return;
       }
 
@@ -147,14 +161,23 @@ class PlatformAdminHandler {
         [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
       ]);
 
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
 
     } catch (error) {
       console.error('User management error:', error);
-      await ctx.answerCbQuery('❌ Error loading users');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading users');
+      } else {
+        await ctx.reply('❌ Error loading users');
+      }
     }
   }
 
@@ -162,7 +185,11 @@ class PlatformAdminHandler {
   static async botManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Access denied');
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
         return;
       }
 
@@ -192,7 +219,6 @@ class PlatformAdminHandler {
           `User#${bot.owner_id}`;
         
         const status = bot.is_active ? '🟢 Active' : '🔴 Inactive';
-        const userCount = 'N/A'; // You might want to add this statistic
         
         message += `*${offset + index + 1}.* ${bot.bot_name} (@${bot.bot_username})\n` +
           `   Owner: ${ownerInfo}\n` +
@@ -219,14 +245,23 @@ class PlatformAdminHandler {
         [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
       ]);
 
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
 
     } catch (error) {
       console.error('Bot management error:', error);
-      await ctx.answerCbQuery('❌ Error loading bots');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading bots');
+      } else {
+        await ctx.reply('❌ Error loading bots');
+      }
     }
   }
 
@@ -234,7 +269,11 @@ class PlatformAdminHandler {
   static async banManagement(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Access denied');
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
         return;
       }
 
@@ -267,14 +306,23 @@ class PlatformAdminHandler {
         [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
       ]);
 
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
 
     } catch (error) {
       console.error('Ban management error:', error);
-      await ctx.answerCbQuery('❌ Error loading ban list');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading ban list');
+      } else {
+        await ctx.reply('❌ Error loading ban list');
+      }
     }
   }
 
@@ -282,7 +330,11 @@ class PlatformAdminHandler {
   static async startBanUser(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Access denied');
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
         return;
       }
 
@@ -291,24 +343,36 @@ class PlatformAdminHandler {
         step: 'awaiting_user_id'
       });
 
-      await ctx.editMessageText(
-        `🚫 *Ban User*\n\n` +
+      const message = `🚫 *Ban User*\n\n` +
         `Please provide the user's Telegram ID or username to ban:\n\n` +
         `*Examples:*\n` +
         `• 123456789 (User ID)\n` +
         `• @username\n\n` +
-        `*Cancel:* Type /cancel`,
-        {
+        `*Cancel:* Type /cancel`;
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
-        }
-      );
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, 
+          Markup.inlineKeyboard([
+            [Markup.button.callback('🚫 Cancel', 'platform_bans')]
+          ])
+        );
+      }
 
     } catch (error) {
       console.error('Start ban user error:', error);
-      await ctx.answerCbQuery('❌ Error starting ban process');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error starting ban process');
+      } else {
+        await ctx.reply('❌ Error starting ban process');
+      }
     }
   }
 
@@ -316,7 +380,11 @@ class PlatformAdminHandler {
   static async startUnbanUser(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Access denied');
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
         return;
       }
 
@@ -325,24 +393,36 @@ class PlatformAdminHandler {
         step: 'awaiting_user_id'
       });
 
-      await ctx.editMessageText(
-        `✅ *Unban User*\n\n` +
+      const message = `✅ *Unban User*\n\n` +
         `Please provide the user's Telegram ID or username to unban:\n\n` +
         `*Examples:*\n` +
         `• 123456789 (User ID)\n` +
         `• @username\n\n` +
-        `*Cancel:* Type /cancel`,
-        {
+        `*Cancel:* Type /cancel`;
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
-        }
-      );
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, 
+          Markup.inlineKeyboard([
+            [Markup.button.callback('🚫 Cancel', 'platform_bans')]
+          ])
+        );
+      }
 
     } catch (error) {
       console.error('Start unban user error:', error);
-      await ctx.answerCbQuery('❌ Error starting unban process');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error starting unban process');
+      } else {
+        await ctx.reply('❌ Error starting unban process');
+      }
     }
   }
 
@@ -350,7 +430,11 @@ class PlatformAdminHandler {
   static async startPlatformBroadcast(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Access denied');
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
         return;
       }
 
@@ -361,23 +445,35 @@ class PlatformAdminHandler {
         step: 'awaiting_message'
       });
 
-      await ctx.editMessageText(
-        `📢 *Platform Broadcast*\n\n` +
+      const message = `📢 *Platform Broadcast*\n\n` +
         `*Recipients:* ${formatNumber(totalUsers)} users\n\n` +
         `⚠️ *Important:* This will send a message to ALL users of the platform.\n\n` +
         `Please type your broadcast message:\n\n` +
-        `*Cancel:* Type /cancel`,
-        {
+        `*Cancel:* Type /cancel`;
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
           ])
-        }
-      );
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, 
+          Markup.inlineKeyboard([
+            [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
+          ])
+        );
+      }
 
     } catch (error) {
       console.error('Start platform broadcast error:', error);
-      await ctx.answerCbQuery('❌ Error starting broadcast');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error starting broadcast');
+      } else {
+        await ctx.reply('❌ Error starting broadcast');
+      }
     }
   }
 
@@ -501,7 +597,11 @@ class PlatformAdminHandler {
   static async advancedAnalytics(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Access denied');
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
         return;
       }
 
@@ -565,14 +665,23 @@ class PlatformAdminHandler {
         [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
       ]);
 
-      await ctx.editMessageText(analyticsMessage, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(analyticsMessage, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(analyticsMessage, keyboard);
+      }
 
     } catch (error) {
       console.error('Advanced analytics error:', error);
-      await ctx.answerCbQuery('❌ Error loading analytics');
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading analytics');
+      } else {
+        await ctx.reply('❌ Error loading analytics');
+      }
     }
   }
 
