@@ -1,4 +1,4 @@
-﻿// src/app.js - Yegara.com cPanel Optimized - FIXED VERSION
+﻿// src/app.js - FIXED VERSION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -6,15 +6,11 @@ if (process.env.NODE_ENV !== 'production') {
   console.log('🚀 Production mode - Using cPanel environment variables');
 }
 
-// Enhanced cPanel detection
 const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
 if (isCpanel) {
   console.log('✅ Running on Yegara.com cPanel');
-  
-  // cPanel specific optimizations
   process.env.NODE_ENV = 'production';
   
-  // Ensure proper logging for cPanel
   const fs = require('fs');
   const path = require('path');
   const logDir = path.join(process.cwd(), 'logs');
@@ -28,7 +24,6 @@ const config = require('../config/environment');
 const { connectDB, healthCheck } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
-// Import handlers
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
@@ -60,15 +55,12 @@ class MetaBotCreator {
       return next();
     });
     
-    // Basic commands
     this.bot.start(startHandler);
     this.bot.help(helpHandler);
     
-    // Legal commands
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
     
-    // DEBUG COMMANDS - Add these for troubleshooting
     this.bot.command('debug_minibots', async (ctx) => {
       try {
         await ctx.reply('🔄 Debugging mini-bots...');
@@ -80,7 +72,6 @@ class MetaBotCreator {
         message += `*Active Bots:* ${status.activeBots}\n`;
         message += `*Attempts:* ${status.attempts}/${status.maxAttempts}\n\n`;
         
-        // Check database for active bots
         try {
           const { Bot } = require('./models');
           const activeBots = await Bot.findAll({ where: { is_active: true } });
@@ -97,7 +88,6 @@ class MetaBotCreator {
         
         await ctx.replyWithMarkdown(message);
         
-        // Force reinitialization
         await ctx.reply('🔄 Forcing mini-bot reinitialization...');
         const result = await MiniBotManager.forceReinitializeAllBots();
         await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
@@ -128,7 +118,6 @@ class MetaBotCreator {
           const botData = MiniBotManager.activeBots.get(botRecord.id);
           if (botData) {
             try {
-              // Test if bot can call getMe
               const botInfo = await botData.instance.telegram.getMe();
               testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
             } catch (error) {
@@ -147,11 +136,9 @@ class MetaBotCreator {
       }
     });
     
-    // CRITICAL: Add command to manually reinitialize mini-bots
     this.bot.command('reinit', async (ctx) => {
       try {
         const userId = ctx.from.id;
-        // Only allow bot owner to reinitialize
         if (userId !== 1827785384) {
           await ctx.reply('❌ Only bot owner can use this command.');
           return;
@@ -166,12 +153,10 @@ class MetaBotCreator {
       }
     });
     
-    // Main commands
     this.bot.command('createbot', createBotHandler);
     this.bot.command('mybots', myBotsHandler);
     this.bot.command('cancel', cancelCreationHandler);
     
-    // Text message handling
     this.bot.on('text', async (ctx) => {
       const userId = ctx.from.id;
       const messageText = ctx.message.text;
@@ -428,7 +413,6 @@ class MetaBotCreator {
     try {
       console.log('🔄 CRITICAL: Starting MetaBot Creator initialization...');
       
-      // Step 1: Connect to database with retries
       console.log('🗄️ Connecting to database...');
       const dbConnected = await connectDB();
       
@@ -484,15 +468,14 @@ class MetaBotCreator {
         console.log('🔒 Legal: /privacy & /terms available');
         console.log('========================================');
         
-        // CRITICAL FIX: Start mini-bots AFTER main bot is running
-        console.log('🔄 Starting mini-bots initialization in 5 seconds...');
+        console.log('🔄 Starting mini-bots initialization in 10 seconds...');
         setTimeout(async () => {
           try {
             await this.initializeMiniBots();
           } catch (error) {
             console.error('❌ Failed to initialize mini-bots:', error);
           }
-        }, 5000);
+        }, 10000);
         
       })
       .catch(error => {
@@ -501,7 +484,6 @@ class MetaBotCreator {
         process.exit(1);
       });
     
-    // Enable graceful stop
     process.once('SIGINT', () => this.shutdown());
     process.once('SIGTERM', () => this.shutdown());
   }
@@ -532,7 +514,6 @@ class MetaBotCreator {
   }
 }
 
-// Start the application
 async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
@@ -549,7 +530,6 @@ async function startApplication() {
   }
 }
 
-// Only start if this is the main module
 if (require.main === module) {
   startApplication();
 }

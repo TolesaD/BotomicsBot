@@ -1,3 +1,4 @@
+// src/services/MiniBotManager.js - FIXED VERSION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -74,7 +75,7 @@ class MiniBotManager {
             console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
           }
           
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
           console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
           failedCount++;
@@ -87,11 +88,11 @@ class MiniBotManager {
       
       if (failedCount > 0 && this.initializationAttempts < this.maxInitializationAttempts) {
         this.initializationAttempts++;
-        console.log(`🔄 Scheduling retry attempt ${this.initializationAttempts}/${this.maxInitializationAttempts} in 10 seconds...`);
+        console.log(`🔄 Scheduling retry attempt ${this.initializationAttempts}/${this.maxInitializationAttempts} in 15 seconds...`);
         setTimeout(() => {
           console.log('🔄 Executing scheduled retry for failed bots...');
           this.initializeAllBots();
-        }, 10000);
+        }, 15000);
       }
       
       return successCount;
@@ -101,11 +102,11 @@ class MiniBotManager {
       
       if (this.initializationAttempts < this.maxInitializationAttempts) {
         this.initializationAttempts++;
-        console.log(`🔄 Scheduling recovery attempt ${this.initializationAttempts}/${this.maxInitializationAttempts} in 15 seconds...`);
+        console.log(`🔄 Scheduling recovery attempt ${this.initializationAttempts}/${this.maxInitializationAttempts} in 20 seconds...`);
         setTimeout(() => {
           console.log('🔄 Executing recovery initialization...');
           this.initializeAllBots();
-        }, 15000);
+        }, 20000);
       }
       
       return 0;
@@ -116,7 +117,6 @@ class MiniBotManager {
     try {
       console.log(`🔐 Testing encryption for bot: ${botRecord.bot_name}`);
       
-      // Test token decryption first
       const decryptionTest = await botRecord.testTokenDecryption();
       if (!decryptionTest.success) {
         console.error(`❌ Token decryption failed for ${botRecord.bot_name}: ${decryptionTest.message}`);
@@ -124,8 +124,6 @@ class MiniBotManager {
       }
       
       console.log(`✅ Token decryption test passed for: ${botRecord.bot_name}`);
-      
-      // Now proceed with normal initialization
       return await this.initializeBot(botRecord);
       
     } catch (error) {
@@ -173,7 +171,7 @@ class MiniBotManager {
       console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
       
       const bot = new Telegraf(token, {
-        handlerTimeout: 90000,
+        handlerTimeout: 120000,
         telegram: { 
           apiRoot: 'https://api.telegram.org',
           agent: null
@@ -192,33 +190,64 @@ class MiniBotManager {
       
       console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
       
-      const launchPromise = bot.launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query', 'my_chat_member']
-      });
+      try {
+        await bot.launch({
+          dropPendingUpdates: true,
+          allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
+          webhook: false
+        });
+        
+        console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
+        
+        try {
+          const botInfo = await bot.telegram.getMe();
+          console.log(`✅ Bot verified: @${botInfo.username}`);
+        } catch (verifyError) {
+          console.error(`❌ Bot verification failed: ${verifyError.message}`);
+          throw new Error(`Bot verification failed: ${verifyError.message}`);
+        }
+        
+        await this.setBotCommands(bot, token);
+        
+        this.activeBots.set(botRecord.id, { 
+          instance: bot, 
+          record: botRecord,
+          token: token,
+          launchedAt: new Date(),
+          status: 'active'
+        });
+        
+        console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
+        console.log(`📊 Current active bots count: ${this.activeBots.size}`);
+        
+        return true;
+        
+      } catch (launchError) {
+        console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
+        
+        console.log(`🔄 Trying alternative launch method for ${botRecord.bot_name}...`);
+        try {
+          await bot.telegram.getMe();
+          console.log(`✅ Token is valid for ${botRecord.bot_name}, starting bot...`);
+          
+          bot.startPolling();
+          console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
+          
+          this.activeBots.set(botRecord.id, { 
+            instance: bot, 
+            record: botRecord,
+            token: token,
+            launchedAt: new Date(),
+            status: 'active'
+          });
+          
+          return true;
+        } catch (altError) {
+          console.error(`❌ Alternative launch also failed for ${botRecord.bot_name}:`, altError.message);
+          return false;
+        }
+      }
       
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Bot launch timeout')), 30000);
-      });
-      
-      await Promise.race([launchPromise, timeoutPromise]);
-      
-      console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
-      
-      await this.setBotCommands(bot, token);
-      
-      this.activeBots.set(botRecord.id, { 
-        instance: bot, 
-        record: botRecord,
-        token: token,
-        launchedAt: new Date(),
-        status: 'active'
-      });
-      
-      console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-      console.log(`📊 Current active bots count: ${this.activeBots.size}`);
-      
-      return true;
     } catch (error) {
       console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
       this.activeBots.delete(botRecord.id);
@@ -320,7 +349,6 @@ class MiniBotManager {
     return await this.initializeAllBots();
   }
 
-  // ADD THIS NEW METHOD FOR DEBUGGING
   async forceInitializeAllBotsDebug() {
     console.log('🔄 FORCE DEBUG: Initializing all mini-bots with debug...');
     
@@ -1276,7 +1304,7 @@ class MiniBotManager {
   checkAdminAccess = async (botId, userId) => {
     try {
       const bot = await Bot.findByPk(botId);
-      if (bot.owner_id == userId) return true; // Use loose comparison
+      if (bot.owner_id == userId) return true;
       
       const admin = await Admin.findOne({
         where: { bot_id: botId, admin_user_id: userId }
@@ -1291,7 +1319,7 @@ class MiniBotManager {
   checkOwnerAccess = async (botId, userId) => {
     try {
       const bot = await Bot.findByPk(botId);
-      return bot.owner_id == userId; // Use loose comparison
+      return bot.owner_id == userId;
     } catch (error) {
       return false;
     }
