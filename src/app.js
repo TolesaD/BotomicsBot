@@ -1,4 +1,4 @@
-﻿// src/app.js - GUARANTEED AUTOMATIC INITIALIZATION
+﻿// src/app.js - COMPLETE VERSION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -73,6 +73,44 @@ class MetaBotCreator {
       } catch (error) {
         console.error('Debug command error:', error);
         await ctx.reply('❌ Debug command failed.');
+      }
+    });
+    
+    this.bot.command('test_minibots', async (ctx) => {
+      try {
+        await ctx.reply('🧪 Testing mini-bot communication...');
+        
+        MiniBotManager.debugActiveBots();
+        
+        const { Bot } = require('./models');
+        const activeBots = await Bot.findAll({ where: { is_active: true } });
+        
+        if (activeBots.length === 0) {
+          await ctx.reply('❌ No active bots found in database.');
+          return;
+        }
+        
+        let testResults = `🧪 *Mini-bot Test Results*\n\n`;
+        
+        for (const botRecord of activeBots) {
+          const botData = MiniBotManager.activeBots.get(botRecord.id);
+          if (botData) {
+            try {
+              const botInfo = await botData.instance.telegram.getMe();
+              testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
+            } catch (error) {
+              testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
+            }
+          } else {
+            testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
+          }
+        }
+        
+        await ctx.replyWithMarkdown(testResults);
+        
+      } catch (error) {
+        console.error('Test command error:', error);
+        await ctx.reply('❌ Test command failed: ' + error.message);
       }
     });
     
@@ -199,120 +237,98 @@ class MetaBotCreator {
     console.log('✅ Main bot callback handlers setup complete');
   }
   
-  // Add these complete handlers back to your app.js:
+  privacyHandler = async (ctx) => {
+    try {
+      const privacyMessage = `🔒 *Privacy Policy - MarCreatorBot*\n\n` +
+        `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
+        `*What We Collect:*\n` +
+        `• Your Telegram user ID and basic profile info\n` +
+        `• Bot tokens (encrypted with AES-256)\n` +
+        `• Message data for bot functionality\n` +
+        `• Usage statistics for service improvement\n\n` +
+        `*How We Use Your Data:*\n` +
+        `• To operate and maintain your mini-bots\n` +
+        `• To forward messages between users and admins\n` +
+        `• To provide bot management features\n` +
+        `• For service analytics and improvements\n\n` +
+        `*Data Protection:*\n` +
+        `• Bot tokens are encrypted at rest\n` +
+        `• Database connections use SSL/TLS\n` +
+        `• Regular security updates\n\n` +
+        `*Data Sharing:*\n` +
+        `We do NOT sell, trade, or share your personal data with third parties.\n\n` +
+        `@${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
+        `By using this service, you agree to our privacy practices.`;
 
-privacyHandler = async (ctx) => {
-  try {
-    const privacyMessage = `🔒 *Privacy Policy - MarCreatorBot*\n\n` +
-      `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
-      `*What We Collect:*\n` +
-      `• Your Telegram user ID and basic profile info\n` +
-      `• Bot tokens (encrypted with AES-256)\n` +
-      `• Message data for bot functionality\n` +
-      `• Usage statistics for service improvement\n\n` +
-      `*How We Use Your Data:*\n` +
-      `• To operate and maintain your mini-bots\n` +
-      `• To forward messages between users and admins\n` +
-      `• To provide bot management features\n` +
-      `• For service analytics and improvements\n\n` +
-      `*Data Protection:*\n` +
-      `• Bot tokens are encrypted at rest\n` +
-      `• Database connections use SSL/TLS\n` +
-      `• Regular security updates\n\n` +
-      `*Data Sharing:*\n` +
-      `We do NOT sell, trade, or share your personal data with third parties.\n\n` +
-      `@${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
-      `By using this service, you agree to our privacy practices.`;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📋 Terms of Service', 'terms_of_service')],
-      [Markup.button.callback('🔙 Main Menu', 'start')]
-    ]);
-
-    if (ctx.updateType === 'callback_query') {
-      await ctx.editMessageText(privacyMessage, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-    } else {
-      await ctx.replyWithMarkdown(privacyMessage, keyboard);
-    }
-  } catch (error) {
-    console.error('Privacy handler error:', error);
-    await ctx.reply(
-      `🔒 Privacy Policy\n\n` +
-      `We protect your data. We collect only necessary information to provide the service.\n\n` +
-      `Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'} for concerns.`,
-      Markup.inlineKeyboard([
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📋 Terms of Service', 'terms_of_service')],
         [Markup.button.callback('🔙 Main Menu', 'start')]
-      ])
-    );
-  }
-}
+      ]);
 
-termsHandler = async (ctx) => {
-  try {
-    const termsMessage = `📋 *Terms of Service - MarCreatorBot*\n\n` +
-      `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
-      `*Acceptance of Terms:*\n` +
-      `By using MarCreatorBot, you agree to these Terms of Service.\n\n` +
-      `*Service Description:*\n` +
-      `MarCreatorBot allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
-      `*User Responsibilities:*\n` +
-      `• You must own or have permission to use bot tokens\n` +
-      `• You are responsible for your mini-bots' actions\n` +
-      `• You must comply with Telegram's Terms of Service\n` +
-      `• You must not use the service for illegal activities\n\n` +
-      `*Prohibited Uses:*\n` +
-      `• Spamming, harassment, or abuse\n` +
-      `• Illegal or fraudulent activities\n` +
-      `• Violating Telegram's Terms of Service\n` +
-      `• Attempting to disrupt the service\n\n` +
-      `*Service Limitations:*\n` +
-      `• Maximum ${config.MAX_BOTS_PER_USER || 10} bots per user\n` +
-      `• Rate limiting applies to prevent abuse\n` +
-      `• Service availability is not guaranteed\n` +
-      `• Features may change without notice\n\n` +
-      `*Data and Privacy:*\n` +
-      `• We encrypt your bot tokens\n` +
-      `• We store minimal necessary data\n` +
-      `• See /privacy for full details\n\n` +
-      `*Termination:*\n` +
-      `We may suspend accounts for:\n` +
-      `• Terms of Service violations\n` +
-      `• Abuse of the service\n` +
-      `• Illegal activities\n\n` +
-      `*Disclaimer:*\n` +
-      `Service provided "as is" without warranties. We're not liable for:\n` +
-      `• Bot downtime or service interruptions\n` +
-      `• Data loss or corruption\n` +
-      `• Actions of your mini-bots\n` +
-      `• Third-party service issues\n\n` +
-      `*Changes to Terms:*\n` +
-      `We may update these terms with reasonable notice.\n\n` +
-      `*Contact:*\n` +
-      `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
-      `By using this service, you agree to these terms.`;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🔒 Privacy Policy', 'privacy_policy')],
-      [Markup.button.callback('🔙 Main Menu', 'start')]
-    ]);
-
-    if (ctx.updateType === 'callback_query') {
-      await ctx.editMessageText(termsMessage, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-    } else {
-      await ctx.replyWithMarkdown(termsMessage, keyboard);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(privacyMessage, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+      } else {
+        await ctx.replyWithMarkdown(privacyMessage, keyboard);
+      }
+    } catch (error) {
+      console.error('Privacy handler error:', error);
+      await ctx.reply(
+        `🔒 Privacy Policy\n\n` +
+        `We protect your data. We collect only necessary information to provide the service.\n\n` +
+        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'} for concerns.`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Main Menu', 'start')]
+        ])
+      );
     }
-  } catch (error) {
-    console.error('Terms handler error:', error);
-    await ctx.reply(
-      `📋 Terms of Service\n\n` +
-      `By using this service, you agree to use it responsibly and follow Telegram's rules.\n\n` +
-      `Contact @${config.SUPPORT_USERNAME || 'MarCreatorBotSupport'} for questions.`,
+  }
+
+  termsHandler = async (ctx) => {
+    try {
+      const termsMessage = `📋 *Terms of Service - MarCreatorBot*\n\n` +
+        `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
+        `*Acceptance of Terms:*\n` +
+        `By using MarCreatorBot, you agree to these Terms of Service.\n\n` +
+        `*Service Description:*\n` +
+        `MarCreatorBot allows users to create and manage Telegram mini-bots for customer support, communities, and business communication.\n\n` +
+        `*User Responsibilities:*\n` +
+        `• You must own or have permission to use bot tokens\n` +
+        `• You are responsible for your mini-bots' actions\n` +
+        `• You must comply with Telegram's Terms of Service\n` +
+        `• You must not use the service for illegal activities\n\n` +
+        `*Prohibited Uses:*\n` +
+        `• Spamming, harassment, or abuse\n` +
+        `• Illegal or fraudulent activities\n` +
+        `• Violating Telegram's Terms of Service\n` +
+        `• Attempting to disrupt the service\n\n` +
+        `*Service Limitations:*\n` +
+        `• Maximum ${config.MAX_BOTS_PER_USER || 10} bots per user\n` +
+        `• Rate limiting applies to prevent abuse\n` +
+        `• Service availability is not guaranteed\n` +
+        `• Features may change without notice\n\n` +
+        `*Data and Privacy:*\n` +
+        `• We encrypt your bot tokens\n` +
+        `• We store minimal necessary data\n` +
+        `• See /privacy for full details\n\n` +
+        `*Termination:*\n` +
+        `We may suspend accounts for:\n` +
+        `• Terms of Service violations\n` +
+        `• Abuse of the service\n` +
+        `• Illegal activities\n\n` +
+        `*Disclaimer:*\n` +
+        `Service provided "as is" without warranties. We're not liable for:\n` +
+        `• Bot downtime or service interruptions\n` +
+        `• Data loss or corruption\n` +
+        `• Actions of your mini-bots\n` +
+        `• Third-party service issues\n\n` +
+        `*Changes to Terms:*\n` +
+        `We may update these terms with reasonable notice.\n\n` +
+        `*Contact:*\n` +
+        `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
+        `By using this service, you agree to these terms.`;
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('🔒 Privacy Policy', 'privacy_policy')],
@@ -329,7 +345,14 @@ termsHandler = async (ctx) => {
       }
     } catch (error) {
       console.error('Terms handler error:', error);
-      await ctx.reply('📋 Terms of Service - Use responsibly.');
+      await ctx.reply(
+        `📋 Terms of Service\n\n` +
+        `By using this service, you agree to use it responsibly and follow Telegram's rules.\n\n` +
+        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorBotSupport'} for questions.`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Main Menu', 'start')]
+        ])
+      );
     }
   }
   
@@ -423,6 +446,7 @@ termsHandler = async (ctx) => {
         console.log('🔧 Use /createbot to create new bots');
         console.log('📋 Use /mybots to view your bots');
         console.log('🔄 Use /reinit to restart mini-bots');
+        console.log('🔒 Legal: /privacy & /terms available');
         console.log('========================================');
         
       })
