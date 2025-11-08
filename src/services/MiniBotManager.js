@@ -41,71 +41,80 @@ class MiniBotManager {
     return result;
   }
   
-  async _initializeAllBots() {
-    try {
-      console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
-      
-      await this.clearAllBots();
-      
-      console.log('⏳ Waiting for database to be fully ready...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const activeBots = await Bot.findAll({ where: { is_active: true } });
-      
-      console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
-      
-      if (activeBots.length === 0) {
-        console.log('ℹ️ No active bots found in database - this is normal for new deployment');
-        this.isInitialized = true;
-        return 0;
-      }
-      
-      let successCount = 0;
-      let failedCount = 0;
-      
-      for (const botRecord of activeBots) {
-        try {
-          console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-          
-          // Don't use timeout - let each bot initialize at its own pace
-          const success = await this.initializeBotWithEncryptionCheck(botRecord);
-          
-          if (success) {
-            successCount++;
-            console.log(`✅ Initialization started: ${botRecord.bot_name}`);
-          } else {
-            failedCount++;
-            console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
-          }
-          
-          // Small delay between bots
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-        } catch (error) {
-          console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
-          failedCount++;
-          // Continue with next bot even if this one fails
-          console.log(`🔄 Continuing with next bot despite error...`);
-        }
-      }
-      
-      console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
-      
-      // Wait a bit for bots to finish launching
-      console.log('⏳ Waiting for bots to complete launch...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      
+// In the _initializeAllBots method, fix the initialization count issue:
+async _initializeAllBots() {
+  try {
+    console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
+    
+    await this.clearAllBots();
+    
+    console.log('⏳ Waiting for database to be fully ready...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    const activeBots = await Bot.findAll({ where: { is_active: true } });
+    
+    console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+    
+    if (activeBots.length === 0) {
+      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
       this.isInitialized = true;
-      this.debugActiveBots();
-      
-      return successCount;
-      
-    } catch (error) {
-      console.error('💥 CRITICAL: Error initializing all bots:', error);
-      this.isInitialized = false;
       return 0;
     }
+    
+    let successCount = 0;
+    let failedCount = 0;
+    
+    for (const botRecord of activeBots) {
+      try {
+        console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
+        
+        // Check if user is banned before initializing bot
+        const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
+        if (owner && owner.is_banned) {
+          console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
+          failedCount++;
+          continue;
+        }
+        
+        // Don't use timeout - let each bot initialize at its own pace
+        const success = await this.initializeBotWithEncryptionCheck(botRecord);
+        
+        if (success) {
+          successCount++;
+          console.log(`✅ Initialization started: ${botRecord.bot_name}`);
+        } else {
+          failedCount++;
+          console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
+        }
+        
+        // Small delay between bots
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
+        failedCount++;
+        // Continue with next bot even if this one fails
+        console.log(`🔄 Continuing with next bot despite error...`);
+      }
+    }
+    
+    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
+    
+    // Wait a bit for bots to finish launching
+    console.log('⏳ Waiting for bots to complete launch...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    
+    this.isInitialized = true;
+    this.debugActiveBots();
+    
+    return successCount;
+    
+  } catch (error) {
+    console.error('💥 CRITICAL: Error initializing all bots:', error);
+    this.isInitialized = false;
+    return 0;
   }
+}
   
   async initializeBotWithEncryptionCheck(botRecord) {
     try {

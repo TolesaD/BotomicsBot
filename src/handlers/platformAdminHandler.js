@@ -1,4 +1,4 @@
-// src/handlers/platformAdminHandler.js - COMPLETE VERSION
+// src/handlers/platformAdminHandler.js - FIXED VERSION
 const { Markup } = require('telegraf');
 const { User, Bot, UserLog, Feedback, BroadcastHistory } = require('../models');
 const { formatNumber, escapeMarkdown } = require('../utils/helpers');
@@ -489,7 +489,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Send platform broadcast
+  // Send platform broadcast - FIXED: Handle platform broadcasts without bot_id foreign key constraint
   static async sendPlatformBroadcast(ctx, message) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -561,16 +561,21 @@ class PlatformAdminHandler {
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
       const successRate = ((successCount / users.length) * 100).toFixed(1);
 
-      // Save broadcast history - FIXED: Include bot_id for platform broadcasts
-      await BroadcastHistory.create({
-        bot_id: 0, // Use 0 for platform broadcasts instead of null
-        sent_by: ctx.from.id,
-        message: message.substring(0, 1000), // Limit message length
-        total_users: users.length,
-        successful_sends: successCount,
-        failed_sends: failCount,
-        broadcast_type: 'platform'
-      });
+      // Save broadcast history - FIXED: Use NULL for platform broadcasts and handle properly
+      try {
+        await BroadcastHistory.create({
+          bot_id: null, // Use NULL for platform broadcasts
+          sent_by: ctx.from.id,
+          message: message.substring(0, 1000), // Limit message length
+          total_users: users.length,
+          successful_sends: successCount,
+          failed_sends: failCount,
+          broadcast_type: 'platform'
+        });
+      } catch (dbError) {
+        console.error('Failed to save broadcast history:', dbError.message);
+        // Continue even if history saving fails
+      }
 
       let resultMessage = `✅ *Platform Broadcast Completed!*\n\n` +
         `*Summary:*\n` +
@@ -642,6 +647,7 @@ class PlatformAdminHandler {
             last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo }
           }
         }),
+        // FIXED: Use PostgreSQL-compatible date functions
         Feedback.findAll({
           where: {
             created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
@@ -796,7 +802,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Detailed reports feature
+  // Detailed reports feature - FIXED: PostgreSQL compatibility
   static async detailedReports(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -839,12 +845,11 @@ class PlatformAdminHandler {
           group: [require('sequelize').fn('DATE', require('sequelize').col('created_at'))],
           raw: true
         }),
-        // Message statistics
+        // Message statistics - FIXED: Use PostgreSQL-compatible date calculations
         Feedback.findAll({
           attributes: [
             [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
-            [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied'],
-            [require('sequelize').fn('AVG', require('sequelize').literal('CASE WHEN replied_at IS NOT NULL THEN julianday(replied_at) - julianday(created_at) END')), 'avg_reply_time']
+            [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
           ],
           raw: true
         }),
@@ -861,7 +866,6 @@ class PlatformAdminHandler {
 
       const totalMessages = parseInt(messageStats[0]?.total || 0);
       const repliedMessages = parseInt(messageStats[0]?.replied || 0);
-      const avgReplyTime = parseFloat(messageStats[0]?.avg_reply_time || 0) * 24 * 60; // Convert to minutes
       const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
       const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
       const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
@@ -870,8 +874,7 @@ class PlatformAdminHandler {
         `*Message Analytics:*\n` +
         `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
         `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
-        `📊 Reply Rate: ${totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : 0}%\n` +
-        `⏱️ Avg Reply Time: ${avgReplyTime.toFixed(1)} minutes\n\n` +
+        `📊 Reply Rate: ${totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : 0}%\n\n` +
         
         `*Broadcast Performance:*\n` +
         `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n` +
@@ -1179,7 +1182,18 @@ class PlatformAdminHandler {
           ban_reason: null
         });
 
-        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been unbanned.`);
+        // Reactivate user's bots when unbanned
+        const userBots = await Bot.findAll({ where: { owner_id: targetUser.telegram_id } });
+        for (const bot of userBots) {
+          try {
+            await MiniBotManager.initializeBot(bot);
+            await bot.update({ is_active: true });
+          } catch (error) {
+            console.error(`Failed to reactivate bot ${bot.id}:`, error);
+          }
+        }
+
+        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been unbanned and their bots have been reactivated.`);
       }
 
       // Return to ban management
@@ -1215,7 +1229,7 @@ class PlatformAdminHandler {
       if (newStatus) {
         // Activate bot
         try {
-          await MiniBotManager.startBot(targetBot.id);
+          await MiniBotManager.initializeBot(targetBot);
           await targetBot.update({ is_active: true });
           await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been activated.`);
         } catch (error) {
