@@ -616,7 +616,13 @@ class MiniBotManager {
           `*Available Commands:*\n` +
           `/start - 🚀 Start the bot\n` +
           `/help - ❓ Get help\n\n` +
-          `*We're here to help! 🤝*\n`;
+          `*Quick Support:*\n` +
+          `For immediate assistance, you can also:\n` +
+          `• Send your question directly\n` +
+          `• Describe your issue in detail\n` +
+          `• We're here to help! 🤝\n\n` +
+          `*Technical Support:*\n` +
+          `Contact @MarCreatorSupportBot for bot-related issues`;
       }
       
       await ctx.replyWithMarkdown(helpMessage);
@@ -705,7 +711,7 @@ class MiniBotManager {
       
       await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user);
       
-      const successMsg = await ctx.reply('✅ Your message has been received.');
+      const successMsg = await ctx.reply('✅ Your message has been received. We will reply soon!');
       await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
       
       console.log(`📨 New message from ${user.first_name} to ${metaBotInfo.botName}`);
