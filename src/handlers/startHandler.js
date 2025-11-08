@@ -1,4 +1,5 @@
-﻿const { Markup } = require('telegraf');
+﻿// src/handlers/startHandler.js
+const { Markup } = require('telegraf');
 const User = require('../models/User');
 
 const startHandler = async (ctx) => {
@@ -35,7 +36,6 @@ const startHandler = async (ctx) => {
       `/terms - Terms of Service\n` +
       `/privacy - Privacy Policy`;
 
-    // Same keyboard for ALL users in main bot
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
       [
@@ -86,7 +86,6 @@ const startHandler = async (ctx) => {
 
 const helpHandler = async (ctx) => {
   try {
-    // Same help content for ALL users in main bot
     const helpMessage = `📖 *MarCreatorBot - Complete Help Guide*\n\n` +
       `*🚀 Getting Started:*\n` +
       `1. Create bot via @BotFather\n` +
