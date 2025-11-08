@@ -1,4 +1,4 @@
-﻿// src/app.js - Yegara.com cPanel Optimized
+﻿// src/app.js - Yegara.com cPanel Optimized - FIXED VERSION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -67,6 +67,85 @@ class MetaBotCreator {
     // Legal commands
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
+    
+    // DEBUG COMMANDS - Add these for troubleshooting
+    this.bot.command('debug_minibots', async (ctx) => {
+      try {
+        await ctx.reply('🔄 Debugging mini-bots...');
+        
+        const status = MiniBotManager.getInitializationStatus();
+        let message = `🔍 *Mini-bot Debug Info*\n\n`;
+        message += `*Status:* ${status.status}\n`;
+        message += `*Initialized:* ${status.isInitialized ? 'Yes' : 'No'}\n`;
+        message += `*Active Bots:* ${status.activeBots}\n`;
+        message += `*Attempts:* ${status.attempts}/${status.maxAttempts}\n\n`;
+        
+        // Check database for active bots
+        try {
+          const { Bot } = require('./models');
+          const activeBots = await Bot.findAll({ where: { is_active: true } });
+          message += `*Database Active Bots:* ${activeBots.length}\n`;
+          
+          if (activeBots.length > 0) {
+            activeBots.forEach((bot, index) => {
+              message += `  ${index + 1}. ${bot.bot_name} (ID: ${bot.id})\n`;
+            });
+          }
+        } catch (dbError) {
+          message += `*Database Error:* ${dbError.message}\n`;
+        }
+        
+        await ctx.replyWithMarkdown(message);
+        
+        // Force reinitialization
+        await ctx.reply('🔄 Forcing mini-bot reinitialization...');
+        const result = await MiniBotManager.forceReinitializeAllBots();
+        await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
+        
+      } catch (error) {
+        console.error('Debug command error:', error);
+        await ctx.reply('❌ Debug command failed: ' + error.message);
+      }
+    });
+    
+    this.bot.command('test_minibots', async (ctx) => {
+      try {
+        await ctx.reply('🧪 Testing mini-bot communication...');
+        
+        MiniBotManager.debugActiveBots();
+        
+        const { Bot } = require('./models');
+        const activeBots = await Bot.findAll({ where: { is_active: true } });
+        
+        if (activeBots.length === 0) {
+          await ctx.reply('❌ No active bots found in database.');
+          return;
+        }
+        
+        let testResults = `🧪 *Mini-bot Test Results*\n\n`;
+        
+        for (const botRecord of activeBots) {
+          const botData = MiniBotManager.activeBots.get(botRecord.id);
+          if (botData) {
+            try {
+              // Test if bot can call getMe
+              const botInfo = await botData.instance.telegram.getMe();
+              testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
+            } catch (error) {
+              testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
+            }
+          } else {
+            testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
+          }
+        }
+        
+        await ctx.replyWithMarkdown(testResults);
+        
+      } catch (error) {
+        console.error('Test command error:', error);
+        await ctx.reply('❌ Test command failed: ' + error.message);
+      }
+    });
     
     // CRITICAL: Add command to manually reinitialize mini-bots
     this.bot.command('reinit', async (ctx) => {
@@ -361,13 +440,7 @@ class MetaBotCreator {
         }
       }
       
-      // CRITICAL FIX: Wait for database to be ready
-      console.log('⏳ Waiting for database to stabilize...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
       console.log('✅ MetaBot Creator initialized successfully');
-      
-      // NOTE: Mini-bots will be initialized AFTER main bot starts (see start() method)
       
     } catch (error) {
       console.error('❌ Initialization failed:', error);
@@ -375,53 +448,20 @@ class MetaBotCreator {
     }
   }
   
-  async initializeMiniBotsWithRetry(maxRetries = 3) {
-    let retries = 0;
-    
-    while (retries < maxRetries) {
-      try {
-        console.log(`🔄 Mini-bot initialization attempt ${retries + 1}/${maxRetries}`);
-        
-        const successCount = await MiniBotManager.initializeAllBots();
-        
-        if (successCount > 0) {
-          console.log(`✅ ${successCount} mini-bots initialized successfully`);
-          return;
-        } else {
-          console.log('ℹ️ No active mini-bots found to initialize');
-          
-          // Check if this might be a database timing issue
-          try {
-            const { Bot } = require('./models');
-            const activeBots = await Bot.findAll({ where: { is_active: true } });
-            console.log(`📊 Database shows ${activeBots.length} active bots`);
-            
-            if (activeBots.length > 0) {
-              console.log('⚠️ Database has active bots but MiniBotManager found 0 - retrying...');
-              retries++;
-              await new Promise(resolve => setTimeout(resolve, 5000));
-              continue;
-            }
-          } catch (modelError) {
-            console.log('📊 Skipping database check due to model loading issue');
-          }
-          
-          // No active bots, this is normal
-          return;
-        }
-      } catch (error) {
-        console.error(`❌ Mini-bot initialization attempt ${retries + 1} failed:`, error.message);
-        retries++;
-        
-        if (retries < maxRetries) {
-          const delay = 5000 * retries;
-          console.log(`🔄 Retrying in ${delay/1000} seconds...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          console.error('💥 All mini-bot initialization attempts failed');
-          console.log('⚠️  Mini-bots will not be available until next restart or manual reinitialization');
-        }
-      }
+  async initializeMiniBots() {
+    try {
+      console.log('\n🚀 CRITICAL: Starting mini-bot initialization...');
+      console.log('==========================================');
+      
+      const result = await MiniBotManager.initializeAllBots();
+      
+      console.log(`🎉 Mini-bot initialization completed: ${result} bots started`);
+      console.log('==========================================\n');
+      
+      return result;
+    } catch (error) {
+      console.error('❌ Mini-bot initialization failed:', error);
+      return 0;
     }
   }
   
@@ -445,109 +485,25 @@ class MetaBotCreator {
         console.log('========================================');
         
         // CRITICAL FIX: Start mini-bots AFTER main bot is running
-        console.log('🔄 Starting mini-bots initialization in 3 seconds...');
-        setTimeout(() => {
-          this.initializeMiniBotsDelayed();
-        }, 3000);
+        console.log('🔄 Starting mini-bots initialization in 5 seconds...');
+        setTimeout(async () => {
+          try {
+            await this.initializeMiniBots();
+          } catch (error) {
+            console.error('❌ Failed to initialize mini-bots:', error);
+          }
+        }, 5000);
         
-        // Schedule health checks
-        if (config.NODE_ENV === 'production') {
-          this.scheduleHealthChecks();
-        }
       })
       .catch(error => {
         console.error('❌ Failed to start main bot:');
         console.error('   Error:', error.message);
-        console.error('💡 Possible causes:');
-        console.error('   1. Invalid bot token');
-        console.error('   2. Network issues blocking Telegram API');
-        console.error('   3. Bot token already in use elsewhere');
-        console.error('   4. Check BOT_TOKEN in cPanel environment variables');
         process.exit(1);
       });
     
     // Enable graceful stop
     process.once('SIGINT', () => this.shutdown());
     process.once('SIGTERM', () => this.shutdown());
-  }
-
-  // ADD THIS NEW METHOD
-  async initializeMiniBotsDelayed() {
-    try {
-      console.log('🤖 CRITICAL: Starting mini-bot initialization AFTER main bot...');
-      
-      const { Bot } = require('./models');
-      const activeBots = await Bot.findAll({ where: { is_active: true } });
-      
-      console.log(`📊 Found ${activeBots.length} active bots to initialize`);
-      
-      if (activeBots.length === 0) {
-        console.log('ℹ️ No active bots found to initialize');
-        return;
-      }
-      
-      let successCount = 0;
-      
-      for (const botRecord of activeBots) {
-        try {
-          console.log(`🔄 Initializing: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-          const success = await MiniBotManager.initializeBot(botRecord);
-          if (success) {
-            console.log(`✅ Successfully initialized: ${botRecord.bot_name}`);
-            successCount++;
-          } else {
-            console.log(`❌ Failed to initialize: ${botRecord.bot_name}`);
-          }
-          
-          // Small delay between bot initializations
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (botError) {
-          console.error(`💥 Error initializing ${botRecord.bot_name}:`, botError.message);
-        }
-      }
-      
-      console.log(`🎉 Mini-bot initialization completed: ${successCount}/${activeBots.length} successful`);
-      
-      // Debug: Check active bots in MiniBotManager
-      MiniBotManager.debugActiveBots();
-      
-    } catch (error) {
-      console.error('❌ Mini-bot initialization failed:', error);
-    }
-  }
-
-  // Add this new method for health checks
-  scheduleHealthChecks() {
-    setInterval(async () => {
-      console.log('🏥 Running scheduled health check...');
-      try {
-        const health = await healthCheck();
-        console.log(`📊 Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
-        
-        const miniBotHealth = MiniBotManager.healthCheck();
-        console.log(`🤖 Mini-bot Health: ${miniBotHealth.isHealthy ? '✅' : '❌'} - ${miniBotHealth.activeBots} active`);
-        
-        // Auto-recover if mini-bots are not initialized but should be
-        if (!miniBotHealth.isInitialized && health.bots.active > 0) {
-          console.log('🔄 AUTO-RECOVERY: Mini-bots not initialized but active bots exist in database - triggering reinitialization...');
-          MiniBotManager.forceReinitializeAllBots();
-        }
-      } catch (healthError) {
-        console.error('Health check failed:', healthError.message);
-      }
-    }, 300000);
-    
-    // Initial health check after 60 seconds
-    setTimeout(async () => {
-      console.log('🏥 Running initial health check...');
-      try {
-        const health = await healthCheck();
-        console.log(`📊 Initial Database Health: ${health.healthy ? '✅' : '❌'} - ${health.bots.total} total bots, ${health.bots.active} active`);
-        MiniBotManager.healthCheck();
-      } catch (error) {
-        console.error('Initial health check failed:', error.message);
-      }
-    }, 60000);
   }
   
   async shutdown() {
