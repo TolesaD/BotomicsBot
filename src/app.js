@@ -1,4 +1,4 @@
-﻿// src/app.js - COMPLETE FIXED VERSION
+﻿// src/app.js - GUARANTEED AUTOMATIC INITIALIZATION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -307,7 +307,7 @@ class MetaBotCreator {
     
     try {
       // Wait for main bot to be fully ready
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       const result = await MiniBotManager.initializeAllBots();
       
@@ -328,6 +328,14 @@ class MetaBotCreator {
   start() {
     console.log('🚀 Starting main bot FIRST...');
     
+    // CRITICAL: Start mini-bots BEFORE main bot to ensure they run
+    console.log('🔄 AUTOMATIC: Starting mini-bots initialization IMMEDIATELY...');
+    this.startMiniBotsAutomatically().then(result => {
+      if (result > 0) {
+        console.log(`✅ ${result} mini-bots started BEFORE main bot`);
+      }
+    });
+    
     // Start main bot
     this.bot.launch({
       dropPendingUpdates: true,
@@ -343,18 +351,6 @@ class MetaBotCreator {
         console.log('📋 Use /mybots to view your bots');
         console.log('🔄 Use /reinit to restart mini-bots');
         console.log('========================================');
-        
-        // CRITICAL: Start mini-bots automatically after main bot is running
-        console.log('🔄 AUTOMATIC: Starting mini-bots in 3 seconds...');
-        
-        // Use a more reliable approach
-        setTimeout(() => {
-          this.startMiniBotsAutomatically().then(result => {
-            if (result === 0) {
-              console.log('💡 TIP: Use /reinit to manually start mini-bots if needed');
-            }
-          });
-        }, 3000);
         
       })
       .catch(error => {
@@ -408,7 +404,6 @@ async function startApplication() {
   }
 }
 
-// Only start if this is the main module
 if (require.main === module) {
   startApplication();
 }
