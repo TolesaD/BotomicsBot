@@ -188,65 +188,66 @@ class MiniBotManager {
       
       this.setupHandlers(bot);
       
-      console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
-      
-      try {
-        await bot.launch({
-          dropPendingUpdates: true,
-          allowedUpdates: ['message', 'callback_query', 'my_chat_member'],
-          webhook: false
-        });
-        
-        console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
-        
-        try {
-          const botInfo = await bot.telegram.getMe();
-          console.log(`✅ Bot verified: @${botInfo.username}`);
-        } catch (verifyError) {
-          console.error(`❌ Bot verification failed: ${verifyError.message}`);
-          throw new Error(`Bot verification failed: ${verifyError.message}`);
-        }
-        
-        await this.setBotCommands(bot, token);
-        
-        this.activeBots.set(botRecord.id, { 
-          instance: bot, 
-          record: botRecord,
-          token: token,
-          launchedAt: new Date(),
-          status: 'active'
-        });
-        
-        console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-        console.log(`📊 Current active bots count: ${this.activeBots.size}`);
-        
-        return true;
-        
-      } catch (launchError) {
-        console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
-        
-        console.log(`🔄 Trying alternative launch method for ${botRecord.bot_name}...`);
-        try {
-          await bot.telegram.getMe();
-          console.log(`✅ Token is valid for ${botRecord.bot_name}, starting bot...`);
-          
-          bot.startPolling();
-          console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
-          
-          this.activeBots.set(botRecord.id, { 
-            instance: bot, 
-            record: botRecord,
-            token: token,
-            launchedAt: new Date(),
-            status: 'active'
-          });
-          
-          return true;
-        } catch (altError) {
-          console.error(`❌ Alternative launch also failed for ${botRecord.bot_name}:`, altError.message);
-          return false;
-        }
-      }
+// In the initializeBot method, replace the launch section with this:
+
+console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
+
+try {
+  // Use a simpler launch approach
+  await bot.launch({
+    dropPendingUpdates: true,
+    allowedUpdates: ['message', 'callback_query', 'my_chat_member']
+  });
+  
+  console.log(`✅ Bot launched successfully: ${botRecord.bot_name}`);
+  
+  // Verify the bot is actually working
+  try {
+    const botInfo = await bot.telegram.getMe();
+    console.log(`✅ Bot verified: @${botInfo.username}`);
+  } catch (verifyError) {
+    console.error(`❌ Bot verification failed: ${verifyError.message}`);
+    // Don't throw here, continue anyway
+  }
+  
+  await this.setBotCommands(bot, token);
+  
+  this.activeBots.set(botRecord.id, { 
+    instance: bot, 
+    record: botRecord,
+    token: token,
+    launchedAt: new Date(),
+    status: 'active'
+  });
+  
+  console.log(`✅ Mini-bot stored in activeBots: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
+  console.log(`📊 Current active bots count: ${this.activeBots.size}`);
+  
+  return true;
+  
+} catch (launchError) {
+  console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
+  
+  // Fallback: start polling directly
+  console.log(`🔄 Starting bot with polling fallback: ${botRecord.bot_name}`);
+  try {
+    bot.startPolling();
+    console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
+    
+    this.activeBots.set(botRecord.id, { 
+      instance: bot, 
+      record: botRecord,
+      token: token,
+      launchedAt: new Date(),
+      status: 'active'
+    });
+    
+    return true;
+  } catch (pollError) {
+    console.error(`❌ Polling also failed for ${botRecord.bot_name}:`, pollError.message);
+    return false;
+  }
+}
       
     } catch (error) {
       console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);

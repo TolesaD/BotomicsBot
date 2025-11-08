@@ -1,4 +1,4 @@
-﻿// src/app.js - FIXED VERSION
+﻿// src/app.js - FIXED AUTOMATIC INITIALIZATION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -434,17 +434,21 @@ class MetaBotCreator {
   
   async initializeMiniBots() {
     try {
-      console.log('\n🚀 CRITICAL: Starting mini-bot initialization...');
-      console.log('==========================================');
+      console.log('\n🚀 CRITICAL: Starting automatic mini-bot initialization...');
+      console.log('==================================================');
+      
+      // Wait a bit more for everything to be ready
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       const result = await MiniBotManager.initializeAllBots();
       
-      console.log(`🎉 Mini-bot initialization completed: ${result} bots started`);
-      console.log('==========================================\n');
+      console.log(`🎉 Automatic mini-bot initialization completed: ${result} bots started`);
+      console.log('==================================================\n');
       
       return result;
     } catch (error) {
-      console.error('❌ Mini-bot initialization failed:', error);
+      console.error('❌ Automatic mini-bot initialization failed:', error);
+      console.log('⚠️  Mini-bots will need to be started manually with /reinit');
       return 0;
     }
   }
@@ -468,14 +472,17 @@ class MetaBotCreator {
         console.log('🔒 Legal: /privacy & /terms available');
         console.log('========================================');
         
-        console.log('🔄 Starting mini-bots initialization in 10 seconds...');
-        setTimeout(async () => {
-          try {
-            await this.initializeMiniBots();
-          } catch (error) {
-            console.error('❌ Failed to initialize mini-bots:', error);
-          }
-        }, 10000);
+        // CRITICAL FIX: Start mini-bots automatically after main bot is running
+        console.log('🔄 Starting automatic mini-bot initialization in 3 seconds...');
+        setTimeout(() => {
+          this.initializeMiniBots().then(result => {
+            if (result > 0) {
+              console.log(`✅ ${result} mini-bots started automatically`);
+            } else {
+              console.log('⚠️ No mini-bots started automatically. Use /reinit to start them manually.');
+            }
+          });
+        }, 3000);
         
       })
       .catch(error => {
