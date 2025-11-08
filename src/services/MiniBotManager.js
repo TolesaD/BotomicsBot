@@ -41,80 +41,81 @@ class MiniBotManager {
     return result;
   }
   
-// In the _initializeAllBots method, fix the initialization count issue:
-async _initializeAllBots() {
-  try {
-    console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
-    
-    await this.clearAllBots();
-    
-    console.log('⏳ Waiting for database to be fully ready...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    const activeBots = await Bot.findAll({ where: { is_active: true } });
-    
-    console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
-    
-    if (activeBots.length === 0) {
-      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
+  async _initializeAllBots() {
+    try {
+      console.log('🔄 CRITICAL: Starting mini-bot initialization on server startup...');
+      
+      await this.clearAllBots();
+      
+      console.log('⏳ Waiting for database to be fully ready...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const activeBots = await Bot.findAll({ where: { is_active: true } });
+      
+      console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+      
+      if (activeBots.length === 0) {
+        console.log('ℹ️ No active bots found in database - this is normal for new deployment');
+        this.isInitialized = true;
+        return 0;
+      }
+      
+      let successCount = 0;
+      let failedCount = 0;
+      
+      for (const botRecord of activeBots) {
+        try {
+          console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
+          
+          // FIXED: Only check for banned users, don't skip initialization for non-platform-creator bots
+          const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
+          if (owner && owner.is_banned) {
+            console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
+            // Deactivate the bot if owner is banned
+            await botRecord.update({ is_active: false });
+            failedCount++;
+            continue;
+          }
+          
+          // Don't use timeout - let each bot initialize at its own pace
+          const success = await this.initializeBotWithEncryptionCheck(botRecord);
+          
+          if (success) {
+            successCount++;
+            console.log(`✅ Initialization started: ${botRecord.bot_name}`);
+          } else {
+            failedCount++;
+            console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
+          }
+          
+          // Small delay between bots
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
+          failedCount++;
+          // Continue with next bot even if this one fails
+          console.log(`🔄 Continuing with next bot despite error...`);
+        }
+      }
+      
+      console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
+      
+      // Wait a bit for bots to finish launching
+      console.log('⏳ Waiting for bots to complete launch...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      
       this.isInitialized = true;
+      this.debugActiveBots();
+      
+      return successCount;
+      
+    } catch (error) {
+      console.error('💥 CRITICAL: Error initializing all bots:', error);
+      this.isInitialized = false;
       return 0;
     }
-    
-    let successCount = 0;
-    let failedCount = 0;
-    
-    for (const botRecord of activeBots) {
-      try {
-        console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
-        
-        // Check if user is banned before initializing bot
-        const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
-        if (owner && owner.is_banned) {
-          console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
-          failedCount++;
-          continue;
-        }
-        
-        // Don't use timeout - let each bot initialize at its own pace
-        const success = await this.initializeBotWithEncryptionCheck(botRecord);
-        
-        if (success) {
-          successCount++;
-          console.log(`✅ Initialization started: ${botRecord.bot_name}`);
-        } else {
-          failedCount++;
-          console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
-        }
-        
-        // Small delay between bots
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-      } catch (error) {
-        console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
-        failedCount++;
-        // Continue with next bot even if this one fails
-        console.log(`🔄 Continuing with next bot despite error...`);
-      }
-    }
-    
-    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
-    
-    // Wait a bit for bots to finish launching
-    console.log('⏳ Waiting for bots to complete launch...');
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    
-    this.isInitialized = true;
-    this.debugActiveBots();
-    
-    return successCount;
-    
-  } catch (error) {
-    console.error('💥 CRITICAL: Error initializing all bots:', error);
-    this.isInitialized = false;
-    return 0;
   }
-}
   
   async initializeBotWithEncryptionCheck(botRecord) {
     try {
@@ -324,9 +325,19 @@ async _initializeAllBots() {
   setupHandlers = (bot) => {
     console.log('🔄 Setting up handlers for bot...');
     
-    // Add middleware to set role-based commands
+    // Add middleware to set role-based commands and check bans
     bot.use(async (ctx, next) => {
       ctx.miniBotManager = this;
+      
+      // FIXED: Check if user is banned before processing any message
+      if (ctx.from) {
+        const user = await User.findOne({ where: { telegram_id: ctx.from.id } });
+        if (user && user.is_banned) {
+          console.log(`🚫 Banned user ${ctx.from.id} tried to access bot ${ctx.metaBotInfo?.botName}`);
+          await ctx.reply('🚫 Your account has been banned from using this platform.');
+          return;
+        }
+      }
       
       // Set appropriate commands for this user
       if (ctx.from && ctx.metaBotInfo) {
@@ -403,6 +414,7 @@ async _initializeAllBots() {
         console.log(`   - Bot ID: ${botRecord.id}`);
         console.log(`   - Bot Name: ${botRecord.bot_name}`);
         console.log(`   - Is Active: ${botRecord.is_active}`);
+        console.log(`   - Owner ID: ${botRecord.owner_id}`);
         
         const token = botRecord.getDecryptedToken();
         console.log(`   - Token available: ${!!token}`);
@@ -438,7 +450,7 @@ async _initializeAllBots() {
       const { metaBotInfo } = ctx;
       const user = ctx.from;
       
-      console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name}`);
+      console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name} (ID: ${user.id})`);
       
       // Ensure commands are set for this user
       await this.setBotCommands(ctx.telegram, null, user.id);

@@ -1,4 +1,4 @@
-﻿// src/app.js - COMPLETE VERSION
+﻿// src/app.js - COMPLETE VERSION WITH FIXES
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -41,24 +41,23 @@ class MetaBotCreator {
   }
   
   setupHandlers() {
-    this.bot.use(async (ctx, next) => {
-  // Skip ban check for platform admin
-  if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
-    return next();
-  }
-  
-  // Check if user is banned
-  if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
-    await ctx.reply('🚫 Your account has been banned from using this platform.');
-    return;
-  }
-  
-  return next();
-});
     console.log('🔄 Setting up bot handlers...');
     
+    // FIXED: Add ban check middleware for all users except platform admin
     this.bot.use(async (ctx, next) => {
       ctx.isMainBot = true;
+      
+      // Skip ban check for platform admin
+      if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
+        return next();
+      }
+      
+      // Check if user is banned
+      if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
+        await ctx.reply('🚫 Your account has been banned from using this platform.');
+        return;
+      }
+      
       return next();
     });
     
