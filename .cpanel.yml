@@ -2,8 +2,10 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/maroseff/public_html/marcreator-bot/
-    - /bin/cp -R * $DEPLOYPATH
-    - /bin/cp -R .env $DEPLOYPATH || true
-    - cd $DEPLOYPATH
-    - /opt/alt/alt-nodejs14/root/usr/bin/npm install --production
-    - echo "✅ MarCreatorBot deployed to /marcreator-bot successfully"
+    - /bin/cp -R src $DEPLOYPATH
+    - /bin/cp -R config $DEPLOYPATH
+    - /bin/cp -R database $DEPLOYPATH
+    - /bin/cp -R scripts $DEPLOYPATH
+    - /bin/cp package.json $DEPLOYPATH
+    - /bin/cp .env $DEPLOYPATH || true
+    - echo "✅ Files deployed. Node modules will be installed by cPanel"
