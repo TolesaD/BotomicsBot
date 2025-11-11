@@ -883,7 +883,7 @@ class MiniBotManager {
         // Regular user help content
         helpMessage = `🤖 *Help & Support*\n\n` +
           `*How to use this bot:*\n` +
-          `• Send any message, image, or video to contact our team\n` +
+          `• Send any message to contact our team\n` +
           `• We'll respond as quickly as possible\n` +
           `• You'll get notifications when we reply\n\n` +
           `*Available Commands:*\n` +
