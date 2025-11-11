@@ -786,7 +786,7 @@ class MiniBotManager {
     try {
       const welcomeMessage = `👋 Welcome to *${metaBotInfo.botName}*!\n\n` +
         `We are here to assist you with any questions or concerns you may have.\n\n` +
-        `Simply send us a message, image, or video, and we'll respond as quickly as possible!\n\n` +
+        `Simply send us a message, and we'll respond as quickly as possible!\n\n` +
         `_This Bot is created by @MarCreatorBot_`;
       
       await ctx.replyWithMarkdown(welcomeMessage);
