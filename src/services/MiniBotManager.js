@@ -1198,7 +1198,6 @@ class MiniBotManager {
       
       await ctx.reply(
         `💬 *Replying to ${feedback.user_first_name}*\n\n` +
-        `*Their message:* ${feedback.message}\n` +
         mediaInfo +
         `\nPlease type your reply message:\n\n` +
         `*Cancel:* Type /cancel`,
