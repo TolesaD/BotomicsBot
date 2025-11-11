@@ -1177,37 +1177,32 @@ class MiniBotManager {
     return emojiMap[messageType] || '📄';
   };
   
-  startReply = async (ctx, feedbackId) => {
-    try {
-      const feedback = await Feedback.findByPk(feedbackId);
-      if (!feedback) {
-        await ctx.reply('❌ Message not found');
-        return;
-      }
-      
-      this.replySessions.set(ctx.from.id, {
-        feedbackId: feedbackId,
-        userId: feedback.user_id,
-        step: 'awaiting_reply'
-      });
-      
-      let mediaInfo = '';
-      if (feedback.message_type !== 'text') {
-        mediaInfo = `\n*Media Type:* ${feedback.message_type}\n`;
-      }
-      
-      await ctx.reply(
-        `💬 *Replying to ${feedback.user_first_name}*\n\n` +
-        `\nPlease type your reply message:\n\n` +
-        `*Cancel:* Type /cancel`,
-        { parse_mode: 'Markdown' }
-      );
-      
-    } catch (error) {
-      console.error('Start reply error:', error);
-      await ctx.reply('❌ Error starting reply');
+startReply = async (ctx, feedbackId) => {
+  try {
+    const feedback = await Feedback.findByPk(feedbackId);
+    if (!feedback) {
+      await ctx.reply('❌ Message not found');
+      return;
     }
-  };
+    
+    this.replySessions.set(ctx.from.id, {
+      feedbackId: feedbackId,
+      userId: feedback.user_id,
+      step: 'awaiting_reply'
+    });
+    
+    await ctx.reply(
+      `💬 *Replying to ${feedback.user_first_name}*\n\n` +
+      `Please type your reply message:\n\n` +
+      `*Cancel:* Type /cancel`,
+      { parse_mode: 'Markdown' }
+    );
+    
+  } catch (error) {
+    console.error('Start reply error:', error);
+    await ctx.reply('❌ Error starting reply');
+  }
+};
   
   sendReply = async (ctx, feedbackId, userId, replyText) => {
     try {
