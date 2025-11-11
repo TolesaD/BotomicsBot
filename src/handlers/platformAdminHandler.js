@@ -645,196 +645,205 @@ class PlatformAdminHandler {
     }
   }
 
-  // Advanced analytics - FIXED: Markdown escaping
-  static async advancedAnalytics(ctx) {
-    try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
+// Advanced analytics - FIXED: MarkdownV2 escaping
+static async advancedAnalytics(ctx) {
+  try {
+    if (!this.isPlatformCreator(ctx.from.id)) {
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Access denied');
+      } else {
+        await ctx.reply('❌ Access denied');
+      }
+      return;
+    }
+
+    // Get analytics data for the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [
+      newUsers,
+      newBots,
+      activeUsers,
+      messagesStats
+    ] = await Promise.all([
+      User.count({
+        where: {
+          created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
         }
-        return;
-      }
+      }),
+      Bot.count({
+        where: {
+          created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
+        }
+      }),
+      User.count({
+        where: {
+          last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo }
+        }
+      }),
+      Feedback.findAll({
+        where: {
+          created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
+        },
+        attributes: [
+          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+          [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
+        ],
+        raw: true
+      })
+    ]);
 
-      // Get analytics data for the last 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const totalMessages = parseInt(messagesStats[0]?.total || 0);
+    const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
+    const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : '0';
 
-      const [
-        newUsers,
-        newBots,
-        activeUsers,
-        messagesStats
-      ] = await Promise.all([
-        User.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          }
-        }),
-        Bot.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          }
-        }),
-        User.count({
-          where: {
-            last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          }
-        }),
-        Feedback.findAll({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-          },
-          attributes: [
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
-            [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
-          ],
-          raw: true
-        })
-      ]);
+    // FIXED: Escape periods in percentages and properly escape all MarkdownV2 special chars
+    const analyticsMessage = 
+      '📊 \\*Advanced Analytics\\* \\(Last 30 Days\\)\n\n' +
+      '\\*User Growth:\\*\n' +
+      `👥 New Users: ${formatNumber(newUsers)}\n` +
+      `👥 Active Users: ${formatNumber(activeUsers)}\n\n` +
+      '\\*Bot Activity:\\*\n' +
+      `🤖 New Bots: ${formatNumber(newBots)}\n\n` +
+      '\\*Messaging:\\*\n' +
+      `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
+      `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
+      `📊 Reply Rate: ${replyRate.toString().replace('.', '\\.')}%\n\n` +
+      '\\*Platform Health:\\*\n' +
+      '🟢 System: Operational\n' +
+      '📈 Trend: Growing';
 
-      const totalMessages = parseInt(messagesStats[0]?.total || 0);
-      const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
-      const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : 0;
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
+      [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+    ]);
 
-      const analyticsMessage = `📊 *Advanced Analytics* \\(Last 30 Days\\)\n\n` +
-        `*User Growth:*\n` +
-        `👥 New Users: ${formatNumber(newUsers)}\n` +
-        `👥 Active Users: ${formatNumber(activeUsers)}\n\n` +
-        `*Bot Activity:*\n` +
-        `🤖 New Bots: ${formatNumber(newBots)}\n\n` +
-        `*Messaging:*\n` +
-        `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
-        `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
-        `📊 Reply Rate: ${replyRate}%\n\n` +
-        `*Platform Health:*\n` +
-        `🟢 System: Operational\n` +
-        `📈 Trend: Growing`;
+    if (ctx.updateType === 'callback_query') {
+      await ctx.editMessageText(analyticsMessage, {
+        parse_mode: 'MarkdownV2',
+        ...keyboard
+      });
+      await ctx.answerCbQuery();
+    } else {
+      await ctx.replyWithMarkdownV2(analyticsMessage, keyboard);
+    }
 
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
-        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
-      ]);
-
-      if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(analyticsMessage, {
-          parse_mode: 'MarkdownV2',
-          ...keyboard
-        });
-        await ctx.answerCbQuery();
-      } else {
-        await ctx.replyWithMarkdown(analyticsMessage, keyboard);
-      }
-
-    } catch (error) {
-      console.error('Advanced analytics error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading analytics');
-      } else {
-        await ctx.reply('❌ Error loading analytics');
-      }
+  } catch (error) {
+    console.error('Advanced analytics error:', error);
+    if (ctx.updateType === 'callback_query') {
+      await ctx.answerCbQuery('❌ Error loading analytics');
+    } else {
+      await ctx.reply('❌ Error loading analytics');
     }
   }
+}
 
-  // User statistics feature
-  static async userStatistics(ctx) {
-    try {
-      if (!this.isPlatformCreator(ctx.from.id)) {
-        if (ctx.updateType === 'callback_query') {
-          await ctx.answerCbQuery('❌ Access denied');
-        } else {
-          await ctx.reply('❌ Access denied');
+// User statistics feature
+static async userStatistics(ctx) {
+  try {
+    if (!this.isPlatformCreator(ctx.from.id)) {
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Access denied');
+      } else {
+        await ctx.reply('❌ Access denied');
+      }
+      return;
+    }
+
+    // Get detailed user statistics
+    const [
+      totalUsers,
+      bannedUsers,
+      activeToday,
+      activeWeek,
+      newToday,
+      newWeek,
+      usersWithBots
+    ] = await Promise.all([
+      User.count(),
+      User.count({ where: { is_banned: true } }),
+      User.count({
+        where: {
+          last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
         }
-        return;
-      }
+      }),
+      User.count({
+        where: {
+          last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+        }
+      }),
+      User.count({
+        where: {
+          created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        }
+      }),
+      User.count({
+        where: {
+          created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+        }
+      }),
+      User.count({
+        include: [{
+          model: Bot,
+          as: 'OwnedBots',
+          required: true
+        }]
+      })
+    ]);
 
-      // Get detailed user statistics
-      const [
-        totalUsers,
-        bannedUsers,
-        activeToday,
-        activeWeek,
-        newToday,
-        newWeek,
-        usersWithBots
-      ] = await Promise.all([
-        User.count(),
-        User.count({ where: { is_banned: true } }),
-        User.count({
-          where: {
-            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          where: {
-            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          where: {
-            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-          }
-        }),
-        User.count({
-          include: [{
-            model: Bot,
-            as: 'OwnedBots',
-            required: true
-          }]
-        })
-      ]);
+    // Calculate percentages and escape them properly
+    const botOwnershipRate = ((usersWithBots / totalUsers) * 100).toFixed(1);
+    const userRetention = ((activeWeek / totalUsers) * 100).toFixed(1);
+    const growthRate = ((newWeek / totalUsers) * 100).toFixed(1);
 
-      const statsMessage = `📊 *User Statistics*\n\n` +
-        `*Overview:*\n` +
-        `👥 Total Users: ${formatNumber(totalUsers)}\n` +
-        `🚫 Banned Users: ${formatNumber(bannedUsers)}\n` +
-        `✅ Active Users: ${formatNumber(totalUsers - bannedUsers)}\n\n` +
-        
-        `*Activity:*\n` +
-        `📈 Active Today: ${formatNumber(activeToday)}\n` +
-        `📈 Active This Week: ${formatNumber(activeWeek)}\n` +
-        `🆕 New Today: ${formatNumber(newToday)}\n` +
-        `🆕 New This Week: ${formatNumber(newWeek)}\n\n` +
-        
-        `*Bot Ownership:*\n` +
-        `🤖 Users with Bots: ${formatNumber(usersWithBots)}\n` +
-        `📊 Bot Ownership Rate: ${((usersWithBots / totalUsers) * 100).toFixed(1)}%\n\n` +
-        
-        `*Platform Health:*\n` +
-        `📱 User Retention: ${((activeWeek / totalUsers) * 100).toFixed(1)}%\n` +
-        `🚀 Growth Rate: ${((newWeek / totalUsers) * 100).toFixed(1)}%`;
+    // FIXED: Escape all special characters including periods in percentages
+    const statsMessage = 
+      '📊 \\*User Statistics\\*\n\n' +
+      '\\*Overview:\\*\n' +
+      `👥 Total Users: ${formatNumber(totalUsers)}\n` +
+      `🚫 Banned Users: ${formatNumber(bannedUsers)}\n` +
+      `✅ Active Users: ${formatNumber(totalUsers - bannedUsers)}\n\n` +
+      
+      '\\*Activity:\\*\n' +
+      `📈 Active Today: ${formatNumber(activeToday)}\n` +
+      `📈 Active This Week: ${formatNumber(activeWeek)}\n` +
+      `🆕 New Today: ${formatNumber(newToday)}\n` +
+      `🆕 New This Week: ${formatNumber(newWeek)}\n\n` +
+      
+      '\\*Bot Ownership:\\*\n' +
+      `🤖 Users with Bots: ${formatNumber(usersWithBots)}\n` +
+      `📊 Bot Ownership Rate: ${botOwnershipRate.replace('.', '\\.')}%\n\n` +
+      
+      '\\*Platform Health:\\*\n' +
+      `📱 User Retention: ${userRetention.replace('.', '\\.')}%\n` +
+      `🚀 Growth Rate: ${growthRate.replace('.', '\\.')}%`;
 
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
-        [Markup.button.callback('📋 Export Users', 'platform_export_users')],
-        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
-      ]);
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
+      [Markup.button.callback('📋 Export Users', 'platform_export_users')],
+      [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+    ]);
 
-      if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(statsMessage, {
-          parse_mode: 'MarkdownV2',
-          ...keyboard
-        });
-        await ctx.answerCbQuery();
-      } else {
-        await ctx.replyWithMarkdown(statsMessage, keyboard);
-      }
+    if (ctx.updateType === 'callback_query') {
+      await ctx.editMessageText(statsMessage, {
+        parse_mode: 'MarkdownV2',
+        ...keyboard
+      });
+      await ctx.answerCbQuery();
+    } else {
+      await ctx.replyWithMarkdownV2(statsMessage, keyboard);
+    }
 
-    } catch (error) {
-      console.error('User statistics error:', error);
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Error loading user statistics');
-      } else {
-        await ctx.reply('❌ Error loading user statistics');
-      }
+  } catch (error) {
+    console.error('User statistics error:', error);
+    if (ctx.updateType === 'callback_query') {
+      await ctx.answerCbQuery('❌ Error loading user statistics');
+    } else {
+      await ctx.reply('❌ Error loading user statistics');
     }
   }
+}
 
   // Detailed reports feature - FIXED: PostgreSQL compatibility
   static async detailedReports(ctx) {
