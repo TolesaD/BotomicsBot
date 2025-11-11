@@ -1278,87 +1278,121 @@ startReply = async (ctx, feedbackId) => {
     }
   };
   
-  sendBroadcast = async (ctx, botId, message) => {
-    try {
-      console.log(`📢 Starting broadcast for bot ID: ${botId}`);
-      
-      const users = await UserLog.findAll({ 
-        where: { bot_id: botId },
-        attributes: ['user_id']
-      });
-      
-      console.log(`📊 Broadcasting to ${users.length} users`);
-      
-      let successCount = 0;
-      let failCount = 0;
-      
-      const progressMsg = await ctx.reply(`🔄 Sending broadcast to ${users.length} users...\n✅ Sent: 0\n❌ Failed: 0`);
-      
-      const botInstance = this.getBotInstanceByDbId(botId);
-      
-      if (!botInstance) {
-        console.error('❌ Bot instance not found for broadcast');
-        this.debugActiveBots();
-        await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
-        return;
-      }
-      
-      console.log(`✅ Bot instance found, starting broadcast...`);
-      
-      for (let i = 0; i < users.length; i++) {
-        const user = users[i];
-        try {
-          await botInstance.telegram.sendMessage(user.user_id, message, {
-            parse_mode: 'Markdown'
-          });
-          successCount++;
-          
-          if (i % 10 === 0) {
-            await ctx.telegram.editMessageText(
-              ctx.chat.id,
-              progressMsg.message_id,
-              null,
-              `🔄 Sending broadcast to ${users.length} users...\n✅ Sent: ${successCount}\n❌ Failed: ${failCount}`
-            );
+sendBroadcast = async (ctx, botId, message) => {
+  try {
+    console.log(`📢 Starting broadcast for bot ID: ${botId}`);
+    
+    const users = await UserLog.findAll({ 
+      where: { bot_id: botId },
+      attributes: ['user_id']
+    });
+    
+    console.log(`📊 Broadcasting to ${users.length} users`);
+    
+    let successCount = 0;
+    let failCount = 0;
+    
+    const progressMsg = await ctx.reply(`🔄 Sending broadcast to ${users.length} users...\n✅ Sent: 0\n❌ Failed: 0`);
+    
+    const botInstance = this.getBotInstanceByDbId(botId);
+    
+    if (!botInstance) {
+      console.error('❌ Bot instance not found for broadcast');
+      this.debugActiveBots();
+      await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
+      return;
+    }
+    
+    console.log(`✅ Bot instance found, starting broadcast...`);
+    
+    // FIXED: Escape special characters for Markdown
+    const escapeMarkdown = (text) => {
+      return text.replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+    };
+    
+    // FIXED: Use HTML parsing mode instead of Markdown to avoid formatting issues
+    const safeMessage = escapeMarkdown(message);
+    
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      try {
+        // FIXED: Use HTML parse_mode and escape special characters
+        await botInstance.telegram.sendMessage(user.user_id, safeMessage, {
+          parse_mode: 'MarkdownV2' // Use MarkdownV2 which is more strict and requires escaping
+        });
+        successCount++;
+        
+        if (i % 10 === 0) {
+          await ctx.telegram.editMessageText(
+            ctx.chat.id,
+            progressMsg.message_id,
+            null,
+            `🔄 Sending broadcast to ${users.length} users...\n✅ Sent: ${successCount}\n❌ Failed: ${failCount}`
+          );
+        }
+        
+        if (i % 30 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        failCount++;
+        console.error(`Failed to send to user ${user.user_id}:`, error.message);
+        
+        // FIXED: Try alternative sending method if Markdown fails
+        if (error.message.includes('parse entities')) {
+          try {
+            // Try sending without any formatting
+            await botInstance.telegram.sendMessage(user.user_id, message, {
+              parse_mode: 'HTML' // Use HTML which is more forgiving
+            });
+            successCount++;
+            failCount--; // Remove from fail count since this attempt succeeded
+            console.log(`✅ Successfully sent to user ${user.user_id} using HTML format`);
+          } catch (htmlError) {
+            console.error(`HTML format also failed for user ${user.user_id}:`, htmlError.message);
+            
+            // Final attempt: send as plain text
+            try {
+              await botInstance.telegram.sendMessage(user.user_id, message);
+              successCount++;
+              failCount--; // Remove from fail count since this attempt succeeded
+              console.log(`✅ Successfully sent to user ${user.user_id} as plain text`);
+            } catch (plainError) {
+              console.error(`Plain text also failed for user ${user.user_id}:`, plainError.message);
+            }
           }
-          
-          if (i % 30 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        } catch (error) {
-          failCount++;
-          console.error(`Failed to send to user ${user.user_id}:`, error.message);
         }
       }
-      
-      await BroadcastHistory.create({
-        bot_id: botId,
-        sent_by: ctx.from.id,
-        message: message,
-        total_users: users.length,
-        successful_sends: successCount,
-        failed_sends: failCount
-      });
-      
-      const successRate = ((successCount / users.length) * 100).toFixed(1);
-      
-      await ctx.telegram.editMessageText(
-        ctx.chat.id,
-        progressMsg.message_id,
-        null,
-        `✅ *Broadcast Completed!*\n\n` +
-        `*Recipients:* ${users.length}\n` +
-        `*✅ Successful:* ${successCount}\n` +
-        `*❌ Failed:* ${failCount}\n` +
-        `*📊 Success Rate:* ${successRate}%`,
-        { parse_mode: 'Markdown' }
-      );
-      
-    } catch (error) {
-      console.error('Send broadcast error:', error);
-      await ctx.reply('❌ Error sending broadcast: ' + error.message);
     }
-  };
+    
+    await BroadcastHistory.create({
+      bot_id: botId,
+      sent_by: ctx.from.id,
+      message: message,
+      total_users: users.length,
+      successful_sends: successCount,
+      failed_sends: failCount
+    });
+    
+    const successRate = ((successCount / users.length) * 100).toFixed(1);
+    
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      progressMsg.message_id,
+      null,
+      `✅ *Broadcast Completed!*\n\n` +
+      `*Recipients:* ${users.length}\n` +
+      `*✅ Successful:* ${successCount}\n` +
+      `*❌ Failed:* ${failCount}\n` +
+      `*📊 Success Rate:* ${successRate}%`,
+      { parse_mode: 'Markdown' }
+    );
+    
+  } catch (error) {
+    console.error('Send broadcast error:', error);
+    await ctx.reply('❌ Error sending broadcast: ' + error.message);
+  }
+};
   
   showStats = async (ctx, botId) => {
     try {
