@@ -278,11 +278,10 @@ class MetaBotCreator {
       const privacyMessage = `🔒 *Privacy Policy - MarCreator*\n\n` +
         `*Last Updated: ${new Date().toISOString().split('T')[0]}*\n\n` +
         `*What MarCreator Collect:*\n` +
-        `• Telegram user ID and basic profile info\n` +
-        `• Bot tokens (encrypted with AES-256)\n` +
-        `• Message data for bot functionality\n` +
+        `• Basic profile info\n` +
+        `• Data for bot functionality\n` +
         `• Usage statistics for service improvement\n\n` +
-        `*How MarCreator Use Your Data:*\n` +
+        `*How MarCreator Use The Data:*\n` +
         `• To operate and maintain your mini-bots\n` +
         `• To forward messages between users and admins\n` +
         `• To provide bot management features\n` +
@@ -291,9 +290,8 @@ class MetaBotCreator {
         `• Bot tokens are encrypted at rest\n` +
         `• Database connections use SSL/TLS\n` +
         `• Regular security updates\n\n` +
-        `*Data Sharing:*\n` +
-        `We do NOT sell, trade, or share your personal data with third parties.\n\n` +
-        `@${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
+        `*Contact:*\n` +
+        `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
         `By using this service, you agree to our privacy practices.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -344,7 +342,6 @@ class MetaBotCreator {
         `• Rate limiting applies to prevent abuse\n` +
         `• Features may change without notice\n\n` +
         `*Data and Privacy:*\n` +
-        `• We encrypt your bot tokens\n` +
         `• We store minimal necessary data\n` +
         `• See /privacy for full details\n\n` +
         `*Termination:*\n` +

@@ -109,12 +109,13 @@ const helpHandler = async (ctx) => {
       `/broadcast - Send to all users\n` +
       `/stats - View statistics\n` +
       `/admins - Manage team (owners only)\n\n` +
-      `*💡 Pro Tips:*\n` +
+      `*💡 Pro Tip:*\n` +
       `• Use bot commands/Menu for quick access\n` +
       `*🔒 Legal & Support:*\n` +
       `/privacy - View Privacy Policy\n` +
       `/terms - View Terms of Service\n` +
-      `Contact @MarCreatorSupportBot for help`;
+      `*Contact:*\n` +
+      `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n`;
 
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],
