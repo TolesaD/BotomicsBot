@@ -480,123 +480,147 @@ class MiniBotManager {
     }
   };
 
-// FIXED: Admin media now properly forwards to all users without returning to admin
+// FIXED: Admin media now properly replies to specific users instead of broadcasting
 handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
   try {
-    // Get the mini-bot instance to send messages through the correct bot
-    const botInstance = this.getBotInstanceByDbId(metaBotInfo.mainBotId);
+    // Check if admin is in a reply session (replying to a specific user)
+    const replySession = this.replySessions.get(user.id);
     
-    if (!botInstance) {
-      console.error('❌ Bot instance not found for admin media sending');
-      await ctx.reply('❌ Bot not active. Please restart the main bot to activate all mini-bots.');
-      return;
-    }
-
-    // Get all users of this bot
-    const users = await UserLog.findAll({ 
-      where: { bot_id: metaBotInfo.mainBotId },
-      attributes: ['user_id']
-    });
-    
-    console.log(`📊 Found ${users.length} total users in UserLog for bot ${metaBotInfo.mainBotId}`);
-    console.log(`👤 Admin user ID: ${user.id} (type: ${typeof user.id})`);
-    
-    let successCount = 0;
-    let failCount = 0;
-    
-    // Filter out the admin who sent the message to avoid sending back to themselves
-    // FIXED: Use strict comparison and log the filtering process
-    const targetUsers = users.filter(userRecord => {
-      const shouldSend = userRecord.user_id !== user.id;
-      if (!shouldSend) {
-        console.log(`🚫 Filtering out admin user: ${userRecord.user_id} (same as sender)`);
-      }
-      return shouldSend;
-    });
-    
-    console.log(`📤 Admin ${user.first_name} sending ${mediaType} to ${targetUsers.length} users (excluding self)`);
-    
-    // If no target users, show appropriate message
-    if (targetUsers.length === 0) {
-      const noUsersMsg = await ctx.reply('ℹ️ No other users to send this media to.');
-      await this.deleteAfterDelay(ctx, noUsersMsg.message_id, 5000);
+    if (replySession && replySession.step === 'awaiting_reply') {
+      // Admin is replying to a specific user with media
+      await this.sendMediaReply(ctx, replySession.userId, replySession.feedbackId, mediaType);
+      this.replySessions.delete(user.id);
       return;
     }
     
-    // Forward the media to all target users (excluding the admin) using the mini-bot instance
-    for (const userRecord of targetUsers) {
-      try {
-        console.log(`📤 Sending ${mediaType} to user ${userRecord.user_id}...`);
-        
-        if (mediaType === 'image' && ctx.message.photo) {
-          const photo = ctx.message.photo[ctx.message.photo.length - 1];
-          await botInstance.telegram.sendPhoto(
-            userRecord.user_id,
-            photo.file_id,
-            {
-              caption: ctx.message.caption || '',
-              parse_mode: 'Markdown'
-            }
-          );
-        } else if (mediaType === 'video' && ctx.message.video) {
-          await botInstance.telegram.sendVideo(
-            userRecord.user_id,
-            ctx.message.video.file_id,
-            {
-              caption: ctx.message.caption || '',
-              parse_mode: 'Markdown'
-            }
-          );
-        } else if (mediaType === 'document' && ctx.message.document) {
-          await botInstance.telegram.sendDocument(
-            userRecord.user_id,
-            ctx.message.document.file_id,
-            {
-              caption: ctx.message.caption || '',
-              parse_mode: 'Markdown'
-            }
-          );
-        } else if (mediaType === 'audio' && ctx.message.audio) {
-          await botInstance.telegram.sendAudio(
-            userRecord.user_id,
-            ctx.message.audio.file_id,
-            {
-              caption: ctx.message.caption || '',
-              parse_mode: 'Markdown'
-            }
-          );
-        } else if (mediaType === 'voice' && ctx.message.voice) {
-          await botInstance.telegram.sendVoice(
-            userRecord.user_id,
-            ctx.message.voice.file_id,
-            {
-              caption: ctx.message.caption || '',
-              parse_mode: 'Markdown'
-            }
-          );
-        }
-        successCount++;
-        console.log(`✅ Successfully sent ${mediaType} to user ${userRecord.user_id}`);
-      } catch (error) {
-        failCount++;
-        console.error(`❌ Failed to send ${mediaType} to user ${userRecord.user_id}:`, error.message);
-      }
-    }
-    
-    // Send success message (text only, no file) using the original context
-    let successMessage = `✅ Your ${mediaType} has been sent to ${successCount} user${successCount !== 1 ? 's' : ''}.`;
-    if (failCount > 0) {
-      successMessage += ` ${failCount} failed.`;
-    }
-    
-    const successMsg = await ctx.reply(successMessage);
-    await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-    
-    console.log(`📤 Admin ${user.first_name} sent ${mediaType} to ${successCount} users of ${metaBotInfo.botName} (${failCount} failed)`);
+    // If no reply session, show admin dashboard (don't broadcast media)
+    await this.showAdminDashboard(ctx, metaBotInfo);
+    const warningMsg = await ctx.reply('⚠️ Use the "Reply Now" buttons to send media to specific users.');
+    await this.deleteAfterDelay(ctx, warningMsg.message_id, 5000);
     
   } catch (error) {
     console.error('Admin media message handler error:', error);
-    await ctx.reply('❌ An error occurred while sending your media. Please try again.');
+    await ctx.reply('❌ An error occurred while processing your media. Please try again.');
+  }
+};
+
+// NEW: Send media reply to specific user
+sendMediaReply = async (ctx, targetUserId, feedbackId, mediaType) => {
+  try {
+    console.log(`💬 Admin sending ${mediaType} reply to user ${targetUserId}`);
+    
+    const feedback = await Feedback.findByPk(feedbackId);
+    if (!feedback) {
+      await ctx.reply('❌ Original message not found.');
+      return;
+    }
+
+    const botInstance = this.getBotInstanceByDbId(feedback.bot_id);
+    if (!botInstance) {
+      console.error('❌ Bot instance not found for media reply');
+      await ctx.reply('❌ Bot not active. Please restart the main bot.');
+      return;
+    }
+
+    // Send the media to the specific user
+    try {
+      if (mediaType === 'image' && ctx.message.photo) {
+        const photo = ctx.message.photo[ctx.message.photo.length - 1];
+        await botInstance.telegram.sendPhoto(
+          targetUserId,
+          photo.file_id,
+          {
+            caption: ctx.message.caption || '',
+            parse_mode: 'Markdown'
+          }
+        );
+      } else if (mediaType === 'video' && ctx.message.video) {
+        await botInstance.telegram.sendVideo(
+          targetUserId,
+          ctx.message.video.file_id,
+          {
+            caption: ctx.message.caption || '',
+            parse_mode: 'Markdown'
+          }
+        );
+      } else if (mediaType === 'document' && ctx.message.document) {
+        await botInstance.telegram.sendDocument(
+          targetUserId,
+          ctx.message.document.file_id,
+          {
+            caption: ctx.message.caption || '',
+            parse_mode: 'Markdown'
+          }
+        );
+      } else if (mediaType === 'audio' && ctx.message.audio) {
+        await botInstance.telegram.sendAudio(
+          targetUserId,
+          ctx.message.audio.file_id,
+          {
+            caption: ctx.message.caption || '',
+            parse_mode: 'Markdown'
+          }
+        );
+      } else if (mediaType === 'voice' && ctx.message.voice) {
+        await botInstance.telegram.sendVoice(
+          targetUserId,
+          ctx.message.voice.file_id,
+          {
+            caption: ctx.message.caption || '',
+            parse_mode: 'Markdown'
+          }
+        );
+      }
+
+      // Update feedback as replied
+      await feedback.update({
+        is_replied: true,
+        reply_message: `[${mediaType} reply] ${ctx.message.caption || ''}`.trim(),
+        replied_by: ctx.from.id,
+        replied_at: new Date()
+      });
+
+      const successMsg = await ctx.reply(`✅ Your ${mediaType} reply has been sent!`);
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`✅ Admin sent ${mediaType} reply to user ${targetUserId}`);
+      
+    } catch (error) {
+      console.error(`❌ Failed to send ${mediaType} reply to user ${targetUserId}:`, error.message);
+      await ctx.reply('❌ Failed to send reply. User might have blocked the bot.');
+    }
+    
+  } catch (error) {
+    console.error('Send media reply error:', error);
+    await ctx.reply('❌ Error sending media reply.');
+  }
+};
+
+// Also need to update the startReply function to handle media replies
+startReply = async (ctx, feedbackId) => {
+  try {
+    const feedback = await Feedback.findByPk(feedbackId);
+    if (!feedback) {
+      await ctx.reply('❌ Message not found');
+      return;
+    }
+    
+    this.replySessions.set(ctx.from.id, {
+      feedbackId: feedbackId,
+      userId: feedback.user_id,
+      step: 'awaiting_reply'
+    });
+    
+    await ctx.reply(
+      `💬 *Replying to ${feedback.user_first_name}*\n\n` +
+      `Please type your reply message or send an image/video/file:\n\n` +
+      `*Cancel:* Type /cancel`,
+      { parse_mode: 'Markdown' }
+    );
+    
+  } catch (error) {
+    console.error('Start reply error:', error);
+    await ctx.reply('❌ Error starting reply');
   }
 };
 
