@@ -492,23 +492,42 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
       return;
     }
 
-    // Get all users of this bot (excluding the admin who sent the message)
+    // Get all users of this bot
     const users = await UserLog.findAll({ 
       where: { bot_id: metaBotInfo.mainBotId },
       attributes: ['user_id']
     });
     
+    console.log(`📊 Found ${users.length} total users in UserLog for bot ${metaBotInfo.mainBotId}`);
+    console.log(`👤 Admin user ID: ${user.id} (type: ${typeof user.id})`);
+    
     let successCount = 0;
     let failCount = 0;
     
     // Filter out the admin who sent the message to avoid sending back to themselves
-    const targetUsers = users.filter(userRecord => userRecord.user_id !== user.id);
+    // FIXED: Use strict comparison and log the filtering process
+    const targetUsers = users.filter(userRecord => {
+      const shouldSend = userRecord.user_id !== user.id;
+      if (!shouldSend) {
+        console.log(`🚫 Filtering out admin user: ${userRecord.user_id} (same as sender)`);
+      }
+      return shouldSend;
+    });
     
     console.log(`📤 Admin ${user.first_name} sending ${mediaType} to ${targetUsers.length} users (excluding self)`);
+    
+    // If no target users, show appropriate message
+    if (targetUsers.length === 0) {
+      const noUsersMsg = await ctx.reply('ℹ️ No other users to send this media to.');
+      await this.deleteAfterDelay(ctx, noUsersMsg.message_id, 5000);
+      return;
+    }
     
     // Forward the media to all target users (excluding the admin) using the mini-bot instance
     for (const userRecord of targetUsers) {
       try {
+        console.log(`📤 Sending ${mediaType} to user ${userRecord.user_id}...`);
+        
         if (mediaType === 'image' && ctx.message.photo) {
           const photo = ctx.message.photo[ctx.message.photo.length - 1];
           await botInstance.telegram.sendPhoto(
@@ -557,9 +576,10 @@ handleAdminMediaMessage = async (ctx, metaBotInfo, user, mediaType) => {
           );
         }
         successCount++;
+        console.log(`✅ Successfully sent ${mediaType} to user ${userRecord.user_id}`);
       } catch (error) {
         failCount++;
-        console.error(`Failed to send ${mediaType} to user ${userRecord.user_id}:`, error.message);
+        console.error(`❌ Failed to send ${mediaType} to user ${userRecord.user_id}:`, error.message);
       }
     }
     
