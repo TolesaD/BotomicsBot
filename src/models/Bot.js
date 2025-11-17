@@ -1,5 +1,4 @@
-﻿Here is the current src/models/Bot.js;
-const { DataTypes } = require('sequelize');
+﻿const { DataTypes } = require('sequelize');
 const { sequelize } = require('../../database/db');
 const { encrypt, decrypt, isEncryptionWorking } = require('../utils/encryption');
 
