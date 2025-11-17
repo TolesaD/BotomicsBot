@@ -1,4 +1,4 @@
-// 📁 src/handlers/botManagementHandler.js - PRODUCTION READY
+// 📁 src/handlers/botManagementHandler.js - FIXED CUSTOM BOT DISPLAY
 const { Markup } = require('telegraf');
 const Bot = require('../models/Bot');
 const Admin = require('../models/Admin');
@@ -34,7 +34,7 @@ class BotManagementHandler {
       
       console.log(`🔍 DEBUG: Total unique bots: ${allBots.length}`);
       allBots.forEach(bot => {
-        console.log(`   - ${bot.bot_name} (ID: ${bot.id}, Owner: ${bot.owner_id === userId})`);
+        console.log(`   - ${bot.bot_name} (ID: ${bot.id}, Type: ${bot.bot_type}, Owner: ${bot.owner_id === userId})`);
       });
       
       if (allBots.length === 0) {
@@ -68,6 +68,11 @@ class BotManagementHandler {
       
       let message = `🤖 *Your Bot Dashboard*\n\n`;
       message += `📊 *Overview:* ${activeBots.length} active, ${inactiveBots.length} inactive\n\n`;
+      
+      // NEW: Show bot type breakdown
+      const quickBots = allBots.filter(bot => bot.bot_type === 'quick');
+      const customBots = allBots.filter(bot => bot.bot_type === 'custom');
+      message += `🎯 Quick Mini-Bots: ${quickBots.length} | 🛠️ Custom Bots: ${customBots.length}\n\n`;
       
       if (activeBots.length > 0) {
         message += `🟢 *Active Bots:*\n`;
@@ -167,12 +172,13 @@ class BotManagementHandler {
       const customCommandCount = await CustomCommand.count({ where: { bot_id: botId, is_active: true } });
       
       const botTypeEmoji = bot.bot_type === 'custom' ? '🛠️' : '🎯';
+      const botTypeText = bot.bot_type === 'custom' ? 'Custom Command Bot' : 'Quick Mini-Bot';
       
       const message = `${botTypeEmoji} *Bot Dashboard: ${bot.bot_name}*\n\n` +
         `🆔 *Bot ID:* ${bot.bot_id}\n` +
         `🔗 *Status:* ${bot.is_active ? '🟢 ACTIVE' : '🔴 INACTIVE'}\n` +
         `👑 *Role:* ${isOwner ? 'Owner' : 'Admin'}\n` +
-        `🎯 *Type:* ${bot.bot_type === 'custom' ? 'Custom Command Bot' : 'Quick Mini-Bot'}\n\n` +
+        `🎯 *Type:* ${botTypeText}\n\n` +
         `📊 *Statistics:*\n` +
         `   👥 Total Users: ${userCount || 0}\n` +
         `   💬 Total Messages: ${messageCount || 0}\n` +
@@ -482,7 +488,7 @@ class BotManagementHandler {
     }
   }
 
-  // NEW: Handle custom commands management
+// NEW: Enhanced custom commands management to show actual flows
   static async handleCustomCommands(ctx, botId) {
     try {
       const bot = await Bot.findByPk(botId);
@@ -491,15 +497,40 @@ class BotManagementHandler {
         return;
       }
 
-      const message = `🛠️ *Custom Commands - ${bot.bot_name}*\n\n` +
-        `*Available Commands:*\n` +
-        `• Use /start to begin interactions\n` +
-        `• All template flows are active\n` +
-        `• Users can interact with your bot\n\n` +
-        `*Next Steps:*\n` +
-        `• Monitor user interactions in your bot\n` +
-        `• Use /dashboard for admin features\n` +
-        `• Add more custom logic as needed`;
+      let message = `🛠️ *Custom Commands - ${bot.bot_name}*\n\n`;
+      
+      if (bot.custom_flow_data) {
+        const flow = bot.custom_flow_data;
+        message += `*Active Custom Flow:* 🟢\n\n` +
+          `*Flow Name:* ${flow.name || 'Custom Flow'}\n` +
+          `*Steps:* ${flow.steps ? flow.steps.length : 0}\n` +
+          `*Status:* Active and running\n\n` +
+          `*Available Commands:*\n`;
+        
+        // Show available triggers
+        if (flow.steps) {
+          const triggers = flow.steps.filter(step => step.type === 'trigger');
+          if (triggers.length > 0) {
+            triggers.forEach(trigger => {
+              message += `• \`${trigger.trigger}\` - ${trigger.description || 'Custom command'}\n`;
+            });
+          } else {
+            message += `• Use /start to begin the flow\n`;
+          }
+        }
+        
+        message += `\n*Users can interact with your custom flow automatically!*`;
+      } else {
+        message += `*No custom flows configured*\n\n` +
+          `*Available Commands:*\n` +
+          `• Use /start to begin interactions\n` +
+          `• All template flows are active\n` +
+          `• Users can interact with your bot\n\n` +
+          `*Next Steps:*\n` +
+          `• Monitor user interactions in your bot\n` +
+          `• Use /dashboard for admin features\n` +
+          `• Add more custom logic as needed`;
+      }
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.url('🔗 Open Bot', `https://t.me/${bot.bot_username}`)],

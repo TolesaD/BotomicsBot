@@ -1,4 +1,4 @@
-﻿// 📁 src/handlers/createBotHandler.js - PRODUCTION READY WITH CUSTOM BUILDER
+﻿// 📁 src/handlers/createBotHandler.js - FIXED CUSTOM BOT CREATION
 const { Markup } = require('telegraf');
 const Bot = require('../models/Bot');
 const Admin = require('../models/Admin');
@@ -70,7 +70,7 @@ const createBotHandler = async (ctx) => {
   }
 };
 
-// NEW: Handle quick bot creation
+// Handle quick bot creation
 const handleQuickBotCreation = async (ctx) => {
   try {
     const userId = ctx.from.id;
@@ -110,7 +110,7 @@ const handleQuickBotCreation = async (ctx) => {
   }
 };
 
-// NEW: Handle custom bot creation with template
+// Handle custom bot creation with template
 const handleCustomBotCreation = async (ctx, templateId = null) => {
   try {
     const userId = ctx.from.id;
@@ -121,11 +121,11 @@ const handleCustomBotCreation = async (ctx, templateId = null) => {
       return;
     }
     
-    // Initialize session with timestamp
+    // Initialize session with timestamp - CRITICAL FIX: Set bot_type to 'custom'
     botCreationSessions.set(userId, {
       step: 'awaiting_token',
       data: {
-        bot_type: 'custom',
+        bot_type: 'custom', // This ensures the bot is created as custom type
         template_id: templateId
       },
       createdAt: Date.now()
@@ -313,15 +313,17 @@ const handleNameInput = async (ctx) => {
       return;
     }
     
-    // Prepare bot data
+    // Prepare bot data - CRITICAL: Ensure bot_type is preserved
     const botData = {
       bot_id: botId,
       owner_id: userId,
       bot_token: session.data.token, // Will be encrypted automatically
       bot_name: botName,
       bot_username: session.data.bot_username,
-      bot_type: session.data.bot_type || 'quick'
+      bot_type: session.data.bot_type || 'quick' // This ensures custom type is saved
     };
+    
+    console.log(`🔧 Creating bot with type: ${session.data.bot_type}`); // Debug log
     
     // Add template flow data for custom bots
     if (session.data.bot_type === 'custom' && session.data.template_id) {
@@ -329,6 +331,7 @@ const handleNameInput = async (ctx) => {
       const template = templateService.getTemplate(session.data.template_id);
       if (template) {
         botData.custom_flow_data = template.flow;
+        console.log(`📋 Template applied: ${template.name}`); // Debug log
       }
     }
     
@@ -403,7 +406,7 @@ const handleNameInput = async (ctx) => {
     try {
       const MiniBotManager = require('../services/MiniBotManager');
       await MiniBotManager.initializeBot(bot);
-      console.log(`✅ Mini-bot initialized: ${botName} (@${session.data.bot_username})`);
+      console.log(`✅ Mini-bot initialized: ${botName} (@${session.data.bot_username}) as ${session.data.bot_type} type`);
     } catch (initError) {
       console.error('Failed to initialize mini-bot:', initError);
       // Don't spam the user with initialization errors
@@ -450,7 +453,7 @@ const cancelCreationHandler = async (ctx) => {
   }
 };
 
-// NEW: Show template selection for custom bots
+// Show template selection for custom bots
 const showCustomBotTemplates = async (ctx) => {
   try {
     const templateService = new TemplateService();
@@ -519,7 +522,7 @@ const showCustomBotTemplates = async (ctx) => {
   }
 };
 
-// NEW: Handle template selection
+// Handle template selection
 const handleTemplateSelection = async (ctx, templateId) => {
   try {
     const templateService = new TemplateService();
@@ -557,7 +560,7 @@ const handleTemplateSelection = async (ctx, templateId) => {
   }
 };
 
-// NEW: Handle template confirmation
+// Handle template confirmation
 const handleTemplateConfirmation = async (ctx, templateId) => {
   try {
     await ctx.answerCbQuery('🛠️ Starting bot creation...');
@@ -568,7 +571,7 @@ const handleTemplateConfirmation = async (ctx, templateId) => {
   }
 };
 
-// NEW: Handle blank flow creation
+// Handle blank flow creation
 const handleBlankFlowCreation = async (ctx) => {
   try {
     await ctx.answerCbQuery('🛠️ Starting blank bot creation...');
@@ -618,7 +621,7 @@ module.exports = {
   isInCreationSession,
   getCreationStep,
   botCreationSessions,
-  // NEW: Custom command builder functions
+  // Custom command builder functions
   handleQuickBotCreation,
   handleCustomBotCreation,
   showCustomBotTemplates,

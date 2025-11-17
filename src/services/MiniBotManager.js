@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - FIXED VERSION
+// src/services/MiniBotManager.js - FIXED VERSION WITH CUSTOM COMMAND SUPPORT
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -10,6 +10,7 @@ class MiniBotManager {
     this.adminSessions = new Map();
     this.messageFlowSessions = new Map();
     this.welcomeMessageSessions = new Map();
+    this.customCommandSessions = new Map(); // NEW: For custom command flows
     this.initializationPromise = null;
     this.isInitialized = false;
     this.initializationAttempts = 0;
@@ -66,7 +67,7 @@ class MiniBotManager {
       
       for (const botRecord of activeBots) {
         try {
-          console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
+          console.log(`\n🔄 Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id}, Type: ${botRecord.bot_type})`);
           
           const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
           if (owner && owner.is_banned) {
@@ -80,7 +81,7 @@ class MiniBotManager {
           
           if (success) {
             successCount++;
-            console.log(`✅ Initialization started: ${botRecord.bot_name}`);
+            console.log(`✅ Initialization started: ${botRecord.bot_name} (${botRecord.bot_type})`);
           } else {
             failedCount++;
             console.error(`❌ Failed to initialize: ${botRecord.bot_name}`);
@@ -148,7 +149,7 @@ class MiniBotManager {
   
   async initializeBot(botRecord) {
     try {
-      console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
+      console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id}, Type: ${botRecord.bot_type})`);
       
       if (this.activeBots.has(botRecord.id)) {
         console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
@@ -335,6 +336,11 @@ class MiniBotManager {
     bot.command('settings', (ctx) => this.handleSettingsCommand(ctx));
     bot.command('help', (ctx) => this.handleHelp(ctx));
     
+    // CRITICAL FIX: Handle custom commands BEFORE regular text messages
+    bot.on('text', (ctx) => this.handleCustomCommands(ctx));
+    bot.on('callback_query', (ctx) => this.handleCustomCommandCallbacks(ctx));
+    
+    // Then handle other message types
     bot.on('text', (ctx) => this.handleTextMessage(ctx));
     bot.on('photo', (ctx) => this.handleImageMessage(ctx));
     bot.on('video', (ctx) => this.handleVideoMessage(ctx));
@@ -353,45 +359,315 @@ class MiniBotManager {
       console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
     });
     
-// Add custom command handler
-  bot.on('text', (ctx) => this.handleCustomCommands(ctx));
-  bot.on('callback_query', (ctx) => this.handleCustomCommandCallbacks(ctx));
+    console.log('✅ Bot handlers setup complete with custom command support');
+  };
 
-  console.log('✅ Bot handlers setup complete with custom command support');
-};
+  // NEW: Custom command handler - PROCESS BEFORE REGULAR MESSAGES
+  handleCustomCommands = async (ctx) => {
+    try {
+      const { metaBotInfo } = ctx;
+      const user = ctx.from;
+      const message = ctx.message.text;
 
-handleCustomCommands = async (ctx) => {
-  try {
-    const { metaBotInfo } = ctx;
-    const user = ctx.from;
-    const message = ctx.message.text;
+      console.log(`🔧 Checking custom commands for bot ${metaBotInfo.botName}, type: ${metaBotInfo.botRecord.bot_type}`);
 
-    // Check if message matches any custom command trigger
-    const customCommandEngine = new CustomCommandEngine(this);
-    const result = await customCommandEngine.executeCommand(
-      metaBotInfo.mainBotId, 
-      user.id, 
-      message
-    );
+      // Only process custom commands for custom bots
+      if (metaBotInfo.botRecord.bot_type === 'custom') {
+        const customCommandResult = await this.processCustomCommandFlow(ctx, metaBotInfo, user, message);
+        if (customCommandResult.handled) {
+          console.log(`✅ Custom command handled for user ${user.id}`);
+          return; // Stop further processing
+        }
+      }
 
-    if (result) {
-      // Custom command was executed, don't process as regular message
-      return;
+      // If not a custom bot or no custom command matched, continue with regular flow
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+        return;
+      }
+
+      await this.handleUserMessage(ctx, metaBotInfo, user, message);
+      
+    } catch (error) {
+      console.error('Custom command handler error:', error);
+      // Fall back to regular message handling
+      await this.handleTextMessage(ctx);
     }
+  };
 
-    // Continue with regular message processing
-    const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
-    if (isAdmin) {
-      await this.showAdminDashboard(ctx, metaBotInfo);
-      return;
+  // NEW: Process custom command flows
+  processCustomCommandFlow = async (ctx, metaBotInfo, user, message) => {
+    try {
+      const botRecord = metaBotInfo.botRecord;
+      
+      // Check if user is in an active custom command session
+      const sessionKey = `${user.id}_${metaBotInfo.mainBotId}`;
+      const userSession = this.customCommandSessions.get(sessionKey);
+      
+      // Handle session continuation
+      if (userSession) {
+        return await this.continueCustomCommandFlow(ctx, metaBotInfo, user, message, userSession);
+      }
+      
+      // Handle new command triggers
+      if (botRecord.custom_flow_data) {
+        const flow = botRecord.custom_flow_data;
+        
+        // Check if message matches any command trigger
+        for (const step of flow.steps || []) {
+          if (step.type === 'trigger' && step.trigger === message) {
+            console.log(`🎯 Custom command triggered: ${message}`);
+            await this.startCustomCommandFlow(ctx, metaBotInfo, user, flow, step);
+            return { handled: true };
+          }
+        }
+        
+        // Check for /start command to show custom welcome
+        if (message === '/start' && flow.welcome_message) {
+          await ctx.replyWithMarkdown(flow.welcome_message.replace(/{botName}/g, metaBotInfo.botName));
+          return { handled: true };
+        }
+      }
+      
+      return { handled: false };
+    } catch (error) {
+      console.error('Custom command flow error:', error);
+      return { handled: false };
     }
+  };
 
-    await this.handleUserMessage(ctx, metaBotInfo, user, message);
+  // NEW: Start custom command flow
+  startCustomCommandFlow = async (ctx, metaBotInfo, user, flow, triggerStep) => {
+    const sessionKey = `${user.id}_${metaBotInfo.mainBotId}`;
     
-  } catch (error) {
-    console.error('Custom command handler error:', error);
-  }
-};
+    this.customCommandSessions.set(sessionKey, {
+      flow: flow,
+      currentStepIndex: 0,
+      userData: {},
+      startedAt: new Date()
+    });
+    
+    // Execute the first step
+    await this.executeCustomCommandStep(ctx, metaBotInfo, user, sessionKey, 0);
+  };
+
+  // NEW: Continue custom command flow
+  continueCustomCommandFlow = async (ctx, metaBotInfo, user, message, userSession) => {
+    const sessionKey = `${user.id}_${metaBotInfo.mainBotId}`;
+    const currentStep = userSession.flow.steps[userSession.currentStepIndex];
+    
+    // Handle user input based on current step type
+    switch (currentStep.type) {
+      case 'ask_question':
+        // Store answer and move to next step
+        userSession.userData[currentStep.variable] = message;
+        userSession.currentStepIndex++;
+        
+        if (userSession.currentStepIndex < userSession.flow.steps.length) {
+          await this.executeCustomCommandStep(ctx, metaBotInfo, user, sessionKey, userSession.currentStepIndex);
+        } else {
+          // Flow completed
+          await this.completeCustomCommandFlow(ctx, metaBotInfo, user, userSession);
+          this.customCommandSessions.delete(sessionKey);
+        }
+        break;
+        
+      case 'multiple_choice':
+        // Handle multiple choice selection
+        const selectedOption = currentStep.options.find(opt => 
+          opt.text === message || opt.value === message
+        );
+        
+        if (selectedOption) {
+          userSession.userData[currentStep.variable] = selectedOption.value;
+          userSession.currentStepIndex++;
+          
+          if (userSession.currentStepIndex < userSession.flow.steps.length) {
+            await this.executeCustomCommandStep(ctx, metaBotInfo, user, sessionKey, userSession.currentStepIndex);
+          } else {
+            await this.completeCustomCommandFlow(ctx, metaBotInfo, user, userSession);
+            this.customCommandSessions.delete(sessionKey);
+          }
+        } else {
+          await ctx.reply('❌ Please select a valid option from the choices above.');
+        }
+        break;
+        
+      default:
+        // For other step types, just move to next step
+        userSession.currentStepIndex++;
+        if (userSession.currentStepIndex < userSession.flow.steps.length) {
+          await this.executeCustomCommandStep(ctx, metaBotInfo, user, sessionKey, userSession.currentStepIndex);
+        } else {
+          await this.completeCustomCommandFlow(ctx, metaBotInfo, user, userSession);
+          this.customCommandSessions.delete(sessionKey);
+        }
+    }
+    
+    return { handled: true };
+  };
+
+  // NEW: Execute a specific step in custom command flow
+  executeCustomCommandStep = async (ctx, metaBotInfo, user, sessionKey, stepIndex) => {
+    const userSession = this.customCommandSessions.get(sessionKey);
+    const step = userSession.flow.steps[stepIndex];
+    
+    switch (step.type) {
+      case 'send_message':
+        await ctx.replyWithMarkdown(this.replaceVariables(step.message, userSession.userData));
+        userSession.currentStepIndex = stepIndex;
+        break;
+        
+      case 'ask_question':
+        await ctx.replyWithMarkdown(this.replaceVariables(step.question, userSession.userData));
+        userSession.currentStepIndex = stepIndex;
+        break;
+        
+      case 'multiple_choice':
+        const options = step.options.map(opt => 
+          [Markup.button.callback(opt.text, `custom_choice_${sessionKey}_${stepIndex}_${opt.value}`)]
+        );
+        
+        const keyboard = Markup.inlineKeyboard(options);
+        await ctx.replyWithMarkdown(this.replaceVariables(step.question, userSession.userData), keyboard);
+        userSession.currentStepIndex = stepIndex;
+        break;
+        
+      case 'conditional':
+        // Evaluate condition and jump to appropriate step
+        const conditionMet = this.evaluateCondition(step.condition, userSession.userData);
+        const nextStepIndex = conditionMet ? step.ifTrue : step.ifFalse;
+        
+        if (nextStepIndex >= 0 && nextStepIndex < userSession.flow.steps.length) {
+          await this.executeCustomCommandStep(ctx, metaBotInfo, user, sessionKey, nextStepIndex);
+        } else {
+          userSession.currentStepIndex = nextStepIndex;
+        }
+        break;
+        
+      default:
+        console.log(`Unknown step type: ${step.type}`);
+        userSession.currentStepIndex++;
+    }
+    
+    this.customCommandSessions.set(sessionKey, userSession);
+  };
+
+  // NEW: Handle custom command callbacks (for multiple choice, etc.)
+  handleCustomCommandCallbacks = async (ctx) => {
+    try {
+      const callbackData = ctx.update.callback_query.data;
+      
+      if (callbackData.startsWith('custom_choice_')) {
+        const parts = callbackData.split('_');
+        const sessionKey = `${parts[2]}_${parts[3]}`;
+        const stepIndex = parseInt(parts[4]);
+        const choiceValue = parts[5];
+        
+        const userSession = this.customCommandSessions.get(sessionKey);
+        if (userSession) {
+          const currentStep = userSession.flow.steps[stepIndex];
+          userSession.userData[currentStep.variable] = choiceValue;
+          userSession.currentStepIndex++;
+          
+          if (userSession.currentStepIndex < userSession.flow.steps.length) {
+            await this.executeCustomCommandStep(ctx, ctx.metaBotInfo, ctx.from, sessionKey, userSession.currentStepIndex);
+          } else {
+            await this.completeCustomCommandFlow(ctx, ctx.metaBotInfo, ctx.from, userSession);
+            this.customCommandSessions.delete(sessionKey);
+          }
+          
+          await ctx.answerCbQuery();
+        }
+      }
+    } catch (error) {
+      console.error('Custom command callback error:', error);
+      await ctx.answerCbQuery('❌ Error processing selection');
+    }
+  };
+
+  // NEW: Complete custom command flow
+  completeCustomCommandFlow = async (ctx, metaBotInfo, user, userSession) => {
+    if (userSession.flow.completion_message) {
+      const completionMessage = this.replaceVariables(userSession.flow.completion_message, userSession.userData);
+      await ctx.replyWithMarkdown(completionMessage);
+    }
+    
+    // Log the completed flow
+    console.log(`✅ Custom command flow completed for user ${user.id} in bot ${metaBotInfo.botName}`);
+    
+    // Notify admins about completed flow (optional)
+    await this.notifyAdminsAboutCustomFlow(metaBotInfo.mainBotId, user, userSession);
+  };
+
+  // NEW: Helper to replace variables in messages
+  replaceVariables = (text, userData) => {
+    let result = text;
+    for (const [key, value] of Object.entries(userData)) {
+      result = result.replace(new RegExp(`{${key}}`, 'g'), value);
+    }
+    return result;
+  };
+
+  // NEW: Evaluate conditions
+  evaluateCondition = (condition, userData) => {
+    // Simple condition evaluation - can be extended
+    const value = userData[condition.variable];
+    switch (condition.operator) {
+      case 'equals': return value === condition.value;
+      case 'not_equals': return value !== condition.value;
+      case 'contains': return value && value.includes(condition.value);
+      default: return false;
+    }
+  };
+
+  // NEW: Notify admins about custom flow completion
+  notifyAdminsAboutCustomFlow = async (botId, user, userSession) => {
+    try {
+      const admins = await Admin.findAll({
+        where: { bot_id: botId },
+        include: [{ model: User, as: 'User' }]
+      });
+      
+      const bot = await Bot.findByPk(botId);
+      const botInstance = this.getBotInstanceByDbId(botId);
+      
+      if (!botInstance) return;
+      
+      const notificationMessage = `📊 *Custom Flow Completed*\n\n` +
+        `*User:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n` +
+        `*Flow:* ${userSession.flow.name || 'Custom Flow'}\n` +
+        `*Completed:* ${new Date().toLocaleString()}\n` +
+        `*Data Collected:* ${Object.keys(userSession.userData).length} fields`;
+      
+      for (const admin of admins) {
+        if (admin.User) {
+          try {
+            await botInstance.telegram.sendMessage(admin.User.telegram_id, notificationMessage, {
+              parse_mode: 'Markdown'
+            });
+          } catch (error) {
+            console.error(`Failed to notify admin ${admin.User.username}:`, error.message);
+          }
+        }
+      }
+      
+      // Notify owner if not in admin list
+      const owner = await User.findOne({ where: { telegram_id: bot.owner_id } });
+      if (owner && !admins.find(a => a.admin_user_id === owner.telegram_id)) {
+        try {
+          await botInstance.telegram.sendMessage(owner.telegram_id, notificationMessage, {
+            parse_mode: 'Markdown'
+          });
+        } catch (error) {
+          console.error('Failed to notify owner:', error.message);
+        }
+      }
+    } catch (error) {
+      console.error('Custom flow notification error:', error);
+    }
+  };
 
   // FIXED: Admin media now properly forwards to all users
   handleImageMessage = async (ctx) => {
@@ -922,7 +1198,7 @@ startReply = async (ctx, feedbackId) => {
       console.log('❌ No active bots found in memory!');
     } else {
       for (const [dbId, botData] of this.activeBots.entries()) {
-        console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
+        console.log(`🤖 Bot: ${botData.record.bot_name} | DB ID: ${dbId} | Type: ${botData.record.bot_type} | Status: ${botData.status} | Launched: ${botData.launchedAt.toISOString()}`);
       }
     }
   };
@@ -947,6 +1223,7 @@ startReply = async (ctx, feedbackId) => {
         console.log(`🔧 DEBUG: Attempting to initialize ${botRecord.bot_name}...`);
         console.log(`   - Bot ID: ${botRecord.id}`);
         console.log(`   - Bot Name: ${botRecord.bot_name}`);
+        console.log(`   - Bot Type: ${botRecord.bot_type}`);
         console.log(`   - Is Active: ${botRecord.is_active}`);
         console.log(`   - Owner ID: ${botRecord.owner_id}`);
         
@@ -979,12 +1256,13 @@ startReply = async (ctx, feedbackId) => {
     };
   }
 
+  // UPDATED: Enhanced start handler to handle custom bot welcome
   handleStart = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
       const user = ctx.from;
       
-      console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name} (ID: ${user.id})`);
+      console.log(`🚀 Start command received for ${metaBotInfo.botName} (Type: ${metaBotInfo.botRecord.bot_type}) from ${user.first_name}`);
       
       await this.setBotCommands(ctx.telegram, null, user.id);
       
@@ -1003,6 +1281,16 @@ startReply = async (ctx, feedbackId) => {
       if (isAdmin) {
         await this.showAdminDashboard(ctx, metaBotInfo);
       } else {
+        // For custom bots, check if there's a custom welcome flow
+        if (metaBotInfo.botRecord.bot_type === 'custom' && metaBotInfo.botRecord.custom_flow_data) {
+          const flow = metaBotInfo.botRecord.custom_flow_data;
+          if (flow.welcome_message) {
+            await ctx.replyWithMarkdown(flow.welcome_message.replace(/{botName}/g, metaBotInfo.botName));
+            return;
+          }
+        }
+        
+        // Fall back to regular welcome for quick bots or custom bots without custom welcome
         await this.showUserWelcome(ctx, metaBotInfo);
       }
       
