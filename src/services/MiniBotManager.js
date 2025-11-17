@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - FIXED VERSION WITH CUSTOM COMMAND SUPPORT
+// src/services/MiniBotManager.js - FIXED CUSTOM BOT DETECTION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 
@@ -10,7 +10,7 @@ class MiniBotManager {
     this.adminSessions = new Map();
     this.messageFlowSessions = new Map();
     this.welcomeMessageSessions = new Map();
-    this.customCommandSessions = new Map(); // NEW: For custom command flows
+    this.customCommandSessions = new Map();
     this.initializationPromise = null;
     this.isInitialized = false;
     this.initializationAttempts = 0;
@@ -178,15 +178,18 @@ class MiniBotManager {
         }
       });
       
+      // CRITICAL FIX: Store the actual bot record in context
       bot.context.metaBotInfo = {
         mainBotId: botRecord.id,
         botId: botRecord.bot_id,
         botName: botRecord.bot_name,
         botUsername: botRecord.bot_username,
-        botRecord: botRecord
+        botRecord: botRecord, // Store the full record
+        isCustomBot: botRecord.bot_type === 'custom' // Explicit flag
       };
       
-      this.setupHandlers(bot);
+      // CRITICAL FIX: Setup handlers based on bot type
+      this.setupHandlers(bot, botRecord);
       
       await this.setBotCommands(bot, token);
       
@@ -200,36 +203,25 @@ class MiniBotManager {
         status: 'launching'
       });
       
-      console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-      
       bot.launch({
         dropPendingUpdates: true,
         allowedUpdates: ['message', 'callback_query', 'my_chat_member']
       }).then(() => {
         console.log(`✅ Bot launch completed: ${botRecord.bot_name}`);
-        
         const botData = this.activeBots.get(botRecord.id);
         if (botData) {
           botData.status = 'active';
           botData.launchedAt = new Date();
-          console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
         }
-        
       }).catch(launchError => {
         console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
-        
-        console.log(`🔄 Trying alternative launch for ${botRecord.bot_name}...`);
         try {
           bot.startPolling();
           console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
-          
           const botData = this.activeBots.get(botRecord.id);
-          if (botData) {
-            botData.status = 'active';
-            console.log(`✅ Bot marked as ACTIVE after polling: ${botRecord.bot_name}`);
-          }
+          if (botData) botData.status = 'active';
         } catch (pollError) {
-          console.error(`❌ Alternative launch failed for ${botRecord.bot_name}:`, pollError.message);
+          console.error(`❌ Alternative launch failed:`, pollError.message);
           this.activeBots.delete(botRecord.id);
         }
       });
@@ -243,92 +235,25 @@ class MiniBotManager {
     }
   }
 
-  isValidBotToken(token) {
-    if (!token || typeof token !== 'string') {
-      return false;
-    }
-    
-    const tokenPattern = /^\d+:[a-zA-Z0-9_-]+$/;
-    const isValid = tokenPattern.test(token);
-    
-    if (!isValid) {
-      console.error(`❌ Invalid token format: ${token.substring(0, 10)}...`);
-    }
-    
-    return isValid;
-  }
-  
-  async setBotCommands(bot, token, userId = null) {
-    try {
-      console.log('🔄 Setting bot commands for menu...');
-      
-      const baseCommands = [
-        { command: 'start', description: '🚀 Start the bot' },
-        { command: 'help', description: '❓ Get help' }
-      ];
-      
-      const quickBotAdminCommands = [
-        { command: 'start', description: '🚀 Start the bot' },
-        { command: 'dashboard', description: '📊 Admin dashboard' },
-        { command: 'broadcast', description: '📢 Send broadcast' },
-        { command: 'stats', description: '📈 View statistics' },
-        { command: 'admins', description: '👥 Manage admins' },
-        { command: 'settings', description: '⚙️ Bot settings' },
-        { command: 'help', description: '❓ Get help' }
-      ];
-      
-      const customBotAdminCommands = [
-        { command: 'start', description: '🚀 Start the bot' },
-        { command: 'dashboard', description: '📊 Admin dashboard' },
-        { command: 'broadcast', description: '📢 Send broadcast' },
-        { command: 'stats', description: '📈 View statistics' },
-        { command: 'admins', description: '👥 Manage admins' },
-        { command: 'settings', description: '⚙️ Bot settings' },
-        { command: 'help', description: '❓ Get help' }
-      ];
-      
-      if (userId) {
-        const isAdmin = await this.checkAdminAccess(bot.context.metaBotInfo.mainBotId, userId);
-        const botType = bot.context.metaBotInfo.botRecord.bot_type;
-        
-        if (isAdmin) {
-          const commands = botType === 'custom' ? customBotAdminCommands : quickBotAdminCommands;
-          await bot.telegram.setMyCommands(commands, {
-            scope: {
-              type: 'chat',
-              chat_id: userId
-            }
-          });
-          console.log(`✅ ${botType} admin commands set for user ${userId}`);
-        } else {
-          await bot.telegram.setMyCommands(baseCommands, {
-            scope: {
-              type: 'chat',
-              chat_id: userId
-            }
-          });
-          console.log(`✅ User commands set for user ${userId}`);
-        }
-      } else {
-        await bot.telegram.setMyCommands(baseCommands);
-        console.log('✅ Default user commands set for all users');
-      }
-    } catch (error) {
-      console.error('❌ Failed to set bot commands:', error.message);
-    }
-  }
-
-  setupHandlers = (bot) => {
-    console.log('🔄 Setting up handlers for bot...');
+  // FIXED: Setup handlers with proper bot type detection
+  setupHandlers = (bot, botRecord) => {
+    console.log(`🔄 Setting up handlers for ${botRecord.bot_name} (Type: ${botRecord.bot_type})`);
     
     bot.use(async (ctx, next) => {
       ctx.miniBotManager = this;
       
+      // CRITICAL FIX: Ensure metaBotInfo is always available
+      if (!ctx.metaBotInfo) {
+        const botData = this.activeBots.get(botRecord.id);
+        if (botData) {
+          ctx.metaBotInfo = botData.instance.context.metaBotInfo;
+        }
+      }
+      
       if (ctx.from) {
         const user = await User.findOne({ where: { telegram_id: ctx.from.id } });
         if (user && user.is_banned) {
-          console.log(`🚫 Banned user ${ctx.from.id} tried to access bot ${ctx.metaBotInfo?.botName}`);
-          await ctx.reply('🚫 Your account has been banned from using this platform.');
+          await ctx.reply('🚫 Your account has been banned.');
           return;
         }
       }
@@ -345,9 +270,7 @@ class MiniBotManager {
     bot.help((ctx) => this.handleHelp(ctx));
     
     // CRITICAL FIX: Different handler order based on bot type
-    const botRecord = bot.context.metaBotInfo?.botRecord;
-    
-    if (botRecord && botRecord.bot_type === 'custom') {
+    if (botRecord.bot_type === 'custom') {
       console.log(`🛠️ Setting up CUSTOM bot handlers for: ${botRecord.bot_name}`);
       
       // For custom bots: Handle custom commands FIRST
@@ -365,7 +288,7 @@ class MiniBotManager {
       bot.on('text', (ctx) => this.handleTextMessage(ctx));
       
     } else {
-      console.log(`🎯 Setting up QUICK bot handlers for: ${botRecord?.bot_name || 'Unknown'}`);
+      console.log(`🎯 Setting up QUICK bot handlers for: ${botRecord.bot_name}`);
       
       // For quick bots: Regular order
       bot.command('dashboard', (ctx) => this.handleDashboard(ctx));
@@ -396,10 +319,133 @@ class MiniBotManager {
       console.error(`Error in mini-bot ${ctx.metaBotInfo?.botName}:`, error);
     });
     
-    console.log('✅ Bot handlers setup complete with custom command support');
+    console.log('✅ Bot handlers setup complete');
   };
 
-  // ENHANCED: Custom command handler with better bot type detection
+  // FIXED: Start handler with proper custom bot detection
+  handleStart = async (ctx) => {
+    try {
+      const { metaBotInfo } = ctx;
+      
+      // CRITICAL FIX: Validate metaBotInfo exists
+      if (!metaBotInfo) {
+        console.error('❌ metaBotInfo is undefined in start handler');
+        return await ctx.reply('🤖 Welcome! This bot is being configured. Please try again later.');
+      }
+
+      const user = ctx.from;
+      
+      console.log(`🚀 Start command received for ${metaBotInfo.botName} (Type: ${metaBotInfo.botRecord.bot_type}) from ${user.first_name}`);
+      
+      // Set bot commands for menu
+      await this.setBotCommands(ctx.telegram, null, user.id);
+      
+      // Safe user logging with validation
+      try {
+        const botExists = await Bot.findByPk(metaBotInfo.mainBotId);
+        if (!botExists) {
+          console.error(`❌ Bot with ID ${metaBotInfo.mainBotId} not found, skipping user log`);
+        } else {
+          await UserLog.upsert({
+            bot_id: metaBotInfo.mainBotId,
+            user_id: user.id,
+            user_username: user.username,
+            user_first_name: user.first_name,
+            last_interaction: new Date(),
+            first_interaction: new Date(),
+            interaction_count: 1
+          });
+        }
+      } catch (dbError) {
+        console.error('❌ User log error:', dbError.message);
+      }
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+      } else {
+        // CRITICAL FIX: Show appropriate welcome based on bot type
+        await this.showUserWelcome(ctx, metaBotInfo);
+      }
+      
+    } catch (error) {
+      console.error('💥 Start handler error:', error);
+      await ctx.reply('👋 Welcome! There was a temporary issue. Please try again.');
+    }
+  };
+
+  // NEW: Enhanced user welcome that handles both quick and custom bots
+  showUserWelcome = async (ctx, metaBotInfo) => {
+    try {
+      const user = ctx.from;
+      const botRecord = metaBotInfo.botRecord;
+      
+      console.log(`🎯 Showing welcome for ${botRecord.bot_type} bot: ${botRecord.bot_name}`);
+      
+      // Handle custom bots with custom flows
+      if (botRecord.bot_type === 'custom') {
+        await this.showCustomBotWelcome(ctx, metaBotInfo, user);
+      } else {
+        // Default quick bot welcome
+        await this.showQuickBotWelcome(ctx, metaBotInfo);
+      }
+    } catch (error) {
+      console.error('Welcome message error:', error);
+      // Fallback to basic welcome
+      await ctx.reply(`👋 Hello ${ctx.from.first_name}! Welcome to ${metaBotInfo.botName}.`);
+    }
+  };
+
+  // NEW: Custom bot welcome handler
+  showCustomBotWelcome = async (ctx, metaBotInfo, user) => {
+    try {
+      const botRecord = metaBotInfo.botRecord;
+      
+      console.log(`🛠️ Showing CUSTOM bot welcome for: ${botRecord.bot_name}`);
+      
+      // Check for custom welcome message or flow
+      if (botRecord.custom_flow_data && botRecord.custom_flow_data.welcome_message) {
+        const welcomeMessage = botRecord.custom_flow_data.welcome_message.replace(/{botName}/g, metaBotInfo.botName);
+        await ctx.replyWithMarkdown(welcomeMessage);
+        
+        // Check if there's an auto-start flow
+        const autoStartStep = botRecord.custom_flow_data.steps?.find(step => 
+          step.type === 'trigger' && step.auto_start === true
+        );
+        
+        if (autoStartStep) {
+          await this.startCustomCommandFlow(ctx, metaBotInfo, user, botRecord.custom_flow_data, autoStartStep);
+        }
+      } else {
+        // Default custom bot welcome
+        await ctx.replyWithMarkdown(
+          `🛠️ *Welcome to ${metaBotInfo.botName}!*\n\n` +
+          `This is a custom command bot with interactive features.\n\n` +
+          `*Available Commands:*\n` +
+          `Use the menu (/) button to see available commands\n\n` +
+          `_This bot was created with @MarCreatorBot_`
+        );
+      }
+    } catch (error) {
+      console.error('Custom bot welcome error:', error);
+      await this.showQuickBotWelcome(ctx, metaBotInfo);
+    }
+  };
+
+  // NEW: Quick bot welcome (extracted from existing code)
+  showQuickBotWelcome = async (ctx, metaBotInfo) => {
+    try {
+      let welcomeMessage = await this.getWelcomeMessage(metaBotInfo.mainBotId);
+      welcomeMessage = welcomeMessage.replace(/{botName}/g, metaBotInfo.botName);
+      await ctx.replyWithMarkdown(welcomeMessage);
+    } catch (error) {
+      console.error('Quick bot welcome error:', error);
+      await ctx.replyWithMarkdown(`👋 Welcome to *${metaBotInfo.botName}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @MarCreatorBot_`);
+    }
+  };
+
+  // FIXED: Custom command handler with better bot type detection
   handleCustomCommands = async (ctx) => {
     try {
       const { metaBotInfo } = ctx;
@@ -412,8 +458,9 @@ class MiniBotManager {
       if (metaBotInfo.botRecord.bot_type === 'custom') {
         console.log(`🛠️ Processing as CUSTOM bot: ${metaBotInfo.botName}`);
         
+        // Try to process custom command flow
         const customCommandResult = await this.processCustomCommandFlow(ctx, metaBotInfo, user, message);
-        if (customCommandResult.handled) {
+        if (customCommandResult && customCommandResult.handled) {
           console.log(`✅ Custom command handled for user ${user.id}`);
           return; // Stop further processing
         }
@@ -444,6 +491,7 @@ class MiniBotManager {
       // Fall back to regular message handling
       await this.handleTextMessage(ctx);
     }
+  };
   };
 
   // NEW: Special handler for user messages in custom bots
