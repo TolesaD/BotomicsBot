@@ -168,6 +168,12 @@ const handleTokenInput = async (ctx) => {
   
   const token = ctx.message.text.trim();
   
+  console.log(`🔍 DEBUG handleTokenInput - Session:`, {
+    bot_type: session.data.bot_type,
+    template_id: session.data.template_id,
+    step: session.step
+  });
+
   // Quick format validation first
   const quickCheck = quickTokenCheck(token);
   if (!quickCheck.valid) {
@@ -199,8 +205,20 @@ const handleTokenInput = async (ctx) => {
     }
     
     // Comprehensive token validation
+    console.log(`🔐 Starting comprehensive token validation...`);
     const validation = await validateBotToken(token, userId);
     
+    console.log(`📊 Validation result:`, {
+      isValid: validation.isValid,
+      errors: validation.errors,
+      hasBotInfo: !!validation.botInfo,
+      botInfo: validation.botInfo ? {
+        id: validation.botInfo.id,
+        username: validation.botInfo.username,
+        name: validation.botInfo.first_name
+      } : 'No bot info'
+    });
+
     if (!validation.isValid) {
       let errorMessage = '❌ **Token validation failed:**\n\n';
       
@@ -221,7 +239,17 @@ const handleTokenInput = async (ctx) => {
       await ctx.reply(errorMessage, { parse_mode: 'Markdown' });
       return;
     }
-    
+
+    // CRITICAL: Check if we have bot info
+    if (!validation.botInfo) {
+      console.error('❌ CRITICAL: Validation passed but no bot info!');
+      botCreationSessions.delete(userId);
+      await ctx.reply(
+        '❌ Token validation passed but could not retrieve bot information. Please try again.'
+      );
+      return;
+    }
+
     // CRITICAL FIX: Check for duplicate bot username
     const existingBotWithUsername = await Bot.findOne({
       where: { bot_username: validation.botInfo.username }
@@ -245,6 +273,12 @@ const handleTokenInput = async (ctx) => {
     
     const botType = session.data.bot_type === 'custom' ? 'Custom Command Bot' : 'Quick Mini-Bot';
     
+    console.log(`✅ Token validation successful, moving to name input:`, {
+      bot_type: session.data.bot_type,
+      username: session.data.bot_username,
+      name: session.data.bot_first_name
+    });
+
     await ctx.reply(
       `✅ *Token verified successfully!*\n\n` +
       `🤖 *Bot Found:*\n` +
@@ -272,6 +306,14 @@ const handleNameInput = async (ctx) => {
   if (!session || session.step !== 'awaiting_name') return;
   
   const botName = ctx.message.text.trim();
+  
+  // DEBUG: Log session data
+  console.log('🔍 DEBUG handleNameInput - Session data:', {
+    bot_type: session.data.bot_type,
+    token: session.data.token ? `${session.data.token.substring(0, 10)}...` : 'missing',
+    bot_username: session.data.bot_username,
+    template_id: session.data.template_id
+  });
   
   // Validate bot name
   const validation = validateBotName(botName);
@@ -323,7 +365,13 @@ const handleNameInput = async (ctx) => {
       bot_type: session.data.bot_type || 'quick' // This ensures custom type is saved
     };
     
-    console.log(`🔧 Creating bot with type: ${session.data.bot_type}`); // Debug log
+    // DEBUG: Log before creation
+    console.log(`🔧 FINAL DEBUG - Creating bot with:`, {
+      name: botName,
+      type: session.data.bot_type,
+      username: session.data.bot_username,
+      has_template: !!session.data.template_id
+    });
     
     // Add template flow data for custom bots
     if (session.data.bot_type === 'custom' && session.data.template_id) {
@@ -338,7 +386,14 @@ const handleNameInput = async (ctx) => {
     // Create bot record (token will be encrypted by model hook)
     const bot = await Bot.create(botData);
     
-    console.log(`✅ Bot created in database: ${botName} (ID: ${bot.id}, Type: ${session.data.bot_type})`);
+    // DEBUG: Log after creation
+    console.log(`✅ Bot created in database:`, {
+      id: bot.id,
+      name: bot.bot_name,
+      type: bot.bot_type,
+      username: bot.bot_username,
+      custom_flow: !!bot.custom_flow_data
+    });
     
     // Add owner as admin with full permissions
     await Admin.create({
