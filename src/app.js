@@ -1,4 +1,4 @@
-﻿// 📁 src/app.js - PRODUCTION READY WITH CUSTOM BUILDER
+﻿// src/app.js - COMPLETE VERSION WITH FIXES
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -17,28 +17,8 @@ const config = require('../config/environment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
-const { 
-  startHandler, 
-  helpHandler, 
-  featuresHandler,
-  showCreationPathwaysHandler,
-  showPathwayInfoHandler,
-  defaultHandler 
-} = require('./handlers/startHandler');
-const { 
-  createBotHandler, 
-  handleTokenInput, 
-  handleNameInput, 
-  cancelCreationHandler, 
-  isInCreationSession, 
-  getCreationStep,
-  handleQuickBotCreation,
-  handleCustomBotCreation,
-  showCustomBotTemplates,
-  handleTemplateSelection,
-  handleTemplateConfirmation,
-  handleBlankFlowCreation
-} = require('./handlers/createBotHandler');
+const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
+const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 
@@ -85,7 +65,6 @@ class MetaBotCreator {
     this.bot.help(helpHandler);
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
-    this.bot.command('features', featuresHandler);
     
     // NEW: Platform admin command
     this.bot.command('platform', (ctx) => {
@@ -109,12 +88,6 @@ class MetaBotCreator {
         const { Bot } = require('./models');
         const activeBots = await Bot.findAll({ where: { is_active: true } });
         message += `*Database Active Bots:* ${activeBots.length}\n`;
-        
-        // NEW: Show bot types
-        const quickBots = activeBots.filter(b => b.bot_type === 'quick');
-        const customBots = activeBots.filter(b => b.bot_type === 'custom');
-        message += `*Quick Mini-Bots:* ${quickBots.length}\n`;
-        message += `*Custom Command Bots:* ${customBots.length}\n`;
         
         await ctx.replyWithMarkdown(message);
         await ctx.reply('🔄 Forcing mini-bot reinitialization...');
@@ -144,16 +117,15 @@ class MetaBotCreator {
         
         for (const botRecord of activeBots) {
           const botData = MiniBotManager.activeBots.get(botRecord.id);
-          const botType = botRecord.bot_type === 'custom' ? '🛠️' : '🎯';
           if (botData) {
             try {
               const botInfo = await botData.instance.telegram.getMe();
-              testResults += `${botType} ✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
+              testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
             } catch (error) {
-              testResults += `${botType} ❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
+              testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
             }
           } else {
-            testResults += `${botType} ❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
+            testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
           }
         }
         
@@ -236,49 +208,6 @@ class MetaBotCreator {
     // REGISTER PLATFORM ADMIN CALLBACKS FIRST - This is critical!
     PlatformAdminHandler.registerCallbacks(this.bot);
     
-    // NEW: Bot creation pathway handlers
-    this.bot.action('show_creation_pathways', async (ctx) => {
-      await ctx.answerCbQuery();
-      await createBotHandler(ctx);
-    });
-    
-    this.bot.action('pathway_info_quick', async (ctx) => {
-      await ctx.answerCbQuery();
-      await showPathwayInfoHandler(ctx, 'quick');
-    });
-    
-    this.bot.action('pathway_info_custom', async (ctx) => {
-      await ctx.answerCbQuery();
-      await showPathwayInfoHandler(ctx, 'custom');
-    });
-    
-    this.bot.action('create_quick_bot', async (ctx) => {
-      await ctx.answerCbQuery();
-      await handleQuickBotCreation(ctx);
-    });
-    
-    this.bot.action('create_custom_bot', async (ctx) => {
-      await ctx.answerCbQuery();
-      await showCustomBotTemplates(ctx);
-    });
-    
-    this.bot.action(/use_template_(.+)/, async (ctx) => {
-      await ctx.answerCbQuery();
-      const templateId = ctx.match[1];
-      await handleTemplateSelection(ctx, templateId);
-    });
-    
-    this.bot.action(/confirm_template_(.+)/, async (ctx) => {
-      await ctx.answerCbQuery();
-      const templateId = ctx.match[1];
-      await handleTemplateConfirmation(ctx, templateId);
-    });
-    
-    this.bot.action('create_blank_flow', async (ctx) => {
-      await ctx.answerCbQuery();
-      await handleBlankFlowCreation(ctx);
-    });
-    
     // Then register other specific callbacks
     this.bot.action('start', async (ctx) => {
       await ctx.answerCbQuery();
@@ -335,7 +264,13 @@ class MetaBotCreator {
       await ctx.reply('👥 Admin management is available in your mini-bots. Use /admins command there.');
     });
     
-    console.log('✅ Main bot callback handlers setup complete with Custom Command Builder support');
+    // REMOVED the catch-all handler that was causing platform admin buttons to redirect to start
+    // this.bot.action(/.+/, async (ctx) => {
+    //   await ctx.answerCbQuery();
+    //   await startHandler(ctx);
+    // });
+    
+    console.log('✅ Main bot callback handlers setup complete');
   }
   
   privacyHandler = async (ctx) => {
@@ -504,13 +439,6 @@ class MetaBotCreator {
       
       if (result > 0) {
         console.log(`✅ AUTOMATIC: ${result} mini-bots started successfully`);
-        
-        // NEW: Show bot type breakdown
-        const { Bot } = require('./models');
-        const activeBots = await Bot.findAll({ where: { is_active: true } });
-        const quickBots = activeBots.filter(b => b.bot_type === 'quick');
-        const customBots = activeBots.filter(b => b.bot_type === 'custom');
-        console.log(`📊 AUTOMATIC: ${quickBots.length} Quick Mini-Bots, ${customBots.length} Custom Command Bots`);
       } else {
         console.log('ℹ️ AUTOMATIC: No active mini-bots found to start');
       }
@@ -544,8 +472,6 @@ class MetaBotCreator {
         console.log('========================================');
         console.log('📱 Main Bot: Manages bot creation');
         console.log('🤖 Mini-bots: Handle user messages');
-        console.log('🎯 Quick Mini-Bots: Simple customer support');
-        console.log('🛠️ Custom Command Bots: Advanced interactions');
         console.log('💬 Send /start to see main menu');
         console.log('🔧 Use /createbot to create new bots');
         console.log('📋 Use /mybots to view your bots');
@@ -594,7 +520,6 @@ async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
     console.log('🚀 Optimized for Yegara.com cPanel deployment');
-    console.log('🛠️ Custom Command Builder: PRODUCTION READY');
     
     const app = new MetaBotCreator();
     await app.initialize();

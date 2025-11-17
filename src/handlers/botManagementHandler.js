@@ -1,8 +1,6 @@
-// 📁 src/handlers/botManagementHandler.js - FIXED CUSTOM BOT DISPLAY
 const { Markup } = require('telegraf');
 const Bot = require('../models/Bot');
 const Admin = require('../models/Admin');
-const TemplateService = require('../services/TemplateService');
 
 class BotManagementHandler {
   static async handleMyBots(ctx) {
@@ -34,7 +32,7 @@ class BotManagementHandler {
       
       console.log(`🔍 DEBUG: Total unique bots: ${allBots.length}`);
       allBots.forEach(bot => {
-        console.log(`   - ${bot.bot_name} (ID: ${bot.id}, Type: ${bot.bot_type}, Owner: ${bot.owner_id === userId})`);
+        console.log(`   - ${bot.bot_name} (ID: ${bot.id}, Owner: ${bot.owner_id === userId})`);
       });
       
       if (allBots.length === 0) {
@@ -47,7 +45,7 @@ class BotManagementHandler {
           '• Interactive bots that actually work!';
 
         const keyboard = Markup.inlineKeyboard([
-          [Markup.button.callback('🚀 Create First Bot', 'show_creation_pathways')],
+          [Markup.button.callback('🚀 Create First Bot', 'create_bot')],
           [Markup.button.callback('🆘 Help', 'help')]
         ]);
 
@@ -69,17 +67,11 @@ class BotManagementHandler {
       let message = `🤖 *Your Bot Dashboard*\n\n`;
       message += `📊 *Overview:* ${activeBots.length} active, ${inactiveBots.length} inactive\n\n`;
       
-      // NEW: Show bot type breakdown
-      const quickBots = allBots.filter(bot => bot.bot_type === 'quick');
-      const customBots = allBots.filter(bot => bot.bot_type === 'custom');
-      message += `🎯 Quick Mini-Bots: ${quickBots.length} | 🛠️ Custom Bots: ${customBots.length}\n\n`;
-      
       if (activeBots.length > 0) {
         message += `🟢 *Active Bots:*\n`;
         activeBots.forEach((bot, index) => {
           const isOwner = bot.owner_id === userId;
-          const botType = bot.bot_type === 'custom' ? '🛠️' : '🎯';
-          message += `${index + 1}. ${botType} ${bot.bot_name} (@${bot.bot_username}) ${isOwner ? '👑' : '👥'}\n`;
+          message += `${index + 1}. ${bot.bot_name} (@${bot.bot_username}) ${isOwner ? '👑' : '👥'}\n`;
         });
         message += '\n';
       }
@@ -88,8 +80,7 @@ class BotManagementHandler {
         message += `🔴 *Inactive Bots:*\n`;
         inactiveBots.forEach((bot, index) => {
           const isOwner = bot.owner_id === userId;
-          const botType = bot.bot_type === 'custom' ? '🛠️' : '🎯';
-          message += `${index + 1}. ${botType} ${bot.bot_name} (@${bot.bot_username}) ${isOwner ? '👑' : '👥'}\n`;
+          message += `${index + 1}. ${bot.bot_name} (@${bot.bot_username}) ${isOwner ? '👑' : '👥'}\n`;
         });
         message += '\n';
       }
@@ -109,13 +100,13 @@ class BotManagementHandler {
       
       const keyboardButtons = uniqueBots.map(bot => [
         Markup.button.callback(
-          `${bot.is_active ? '🟢' : '🔴'} ${bot.bot_type === 'custom' ? '🛠️' : '🎯'} ${bot.bot_name}`,
+          `${bot.is_active ? '🟢' : '🔴'} ${bot.bot_name}`,
           `bot_dashboard_${bot.bot_id}`
         )
       ]);
       
       keyboardButtons.push([
-        Markup.button.callback('🚀 Create New Bot', 'show_creation_pathways'),
+        Markup.button.callback('🚀 Create New Bot', 'create_bot'),
         Markup.button.callback('🔄 Refresh', 'my_bots')
       ]);
 
@@ -163,31 +154,24 @@ class BotManagementHandler {
       const UserLog = require('../models/UserLog');
       const Feedback = require('../models/Feedback');
       const AdminModel = require('../models/Admin');
-      const CustomCommand = require('../models/CustomCommand');
       
       const userCount = await UserLog.count({ where: { bot_id: botId } });
       const messageCount = await Feedback.count({ where: { bot_id: botId } });
       const pendingCount = await Feedback.count({ where: { bot_id: botId, is_replied: false } });
       const adminCount = await AdminModel.count({ where: { bot_id: botId } });
-      const customCommandCount = await CustomCommand.count({ where: { bot_id: botId, is_active: true } });
       
-      const botTypeEmoji = bot.bot_type === 'custom' ? '🛠️' : '🎯';
-      const botTypeText = bot.bot_type === 'custom' ? 'Custom Command Bot' : 'Quick Mini-Bot';
-      
-      const message = `${botTypeEmoji} *Bot Dashboard: ${bot.bot_name}*\n\n` +
+      const message = `🎯 *Bot Dashboard: ${bot.bot_name}*\n\n` +
         `🆔 *Bot ID:* ${bot.bot_id}\n` +
         `🔗 *Status:* ${bot.is_active ? '🟢 ACTIVE' : '🔴 INACTIVE'}\n` +
-        `👑 *Role:* ${isOwner ? 'Owner' : 'Admin'}\n` +
-        `🎯 *Type:* ${botTypeText}\n\n` +
+        `👑 *Role:* ${isOwner ? 'Owner' : 'Admin'}\n\n` +
         `📊 *Statistics:*\n` +
         `   👥 Total Users: ${userCount || 0}\n` +
         `   💬 Total Messages: ${messageCount || 0}\n` +
         `   📨 Pending Replies: ${pendingCount || 0}\n` +
-        `   👥 Team Members: ${adminCount + 1}\n` +
-        `   🛠️ Custom Commands: ${customCommandCount || 0}\n\n` +
+        `   👥 Team Members: ${adminCount + 1}\n\n` +
         `⚡ *Quick Actions:*`;
       
-      const baseButtons = [
+      const keyboard = Markup.inlineKeyboard([
         [
           Markup.button.callback(bot.is_active ? '🔴 Deactivate' : '🟢 Activate', `toggle_bot_${botId}`),
           Markup.button.callback('📊 Stats', `stats_${botId}`)
@@ -195,23 +179,12 @@ class BotManagementHandler {
         [
           Markup.button.url('🔗 Open Bot', `https://t.me/${bot.bot_username}`),
           Markup.button.callback('👥 Admins', `admin_bot_${botId}`)
+        ],
+        [
+          Markup.button.callback('🗑️ Delete', `delete_bot_${botId}`),
+          Markup.button.callback('⬅️ Back', 'my_bots')
         ]
-      ];
-
-      // Add custom command management for custom bots
-      if (bot.bot_type === 'custom') {
-        baseButtons.unshift([
-          Markup.button.callback('🛠️ Custom Commands', `custom_commands_${botId}`),
-          Markup.button.callback('📋 View Flows', `view_flows_${botId}`)
-        ]);
-      }
-
-      baseButtons.push([
-        Markup.button.callback('🗑️ Delete', `delete_bot_${botId}`),
-        Markup.button.callback('⬅️ Back', 'my_bots')
       ]);
-
-      const keyboard = Markup.inlineKeyboard(baseButtons);
       
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, { 
@@ -356,254 +329,14 @@ class BotManagementHandler {
       await ctx.answerCbQuery('❌ Error deleting bot');
     }
   }
-
-  // NEW: Handle custom bot creation flow
-  static async handleCustomBotCreation(ctx) {
-    try {
-      const templateService = new TemplateService();
-      const templates = templateService.getTemplatesForDisplay();
-      
-      let templateMessage = `🛠️ *Custom Command Builder*\n\n` +
-        `*Choose a Template or Start Fresh*\n\n`;
-      
-      // Display educational templates
-      if (templates.educational && templates.educational.length > 0) {
-        templateMessage += `📚 *Educational Templates:*\n`;
-        templates.educational.forEach((template, index) => {
-          templateMessage += `\n${template.icon} *${template.name}*\n` +
-            `${template.description}\n` +
-            `📊 Difficulty: ${template.difficulty} | Steps: ${template.stepCount}\n`;
-        });
-        templateMessage += `\n`;
-      }
-      
-      // Display engagement templates
-      if (templates.engagement && templates.engagement.length > 0) {
-        templateMessage += `🎯 *Engagement Templates:*\n`;
-        templates.engagement.forEach((template, index) => {
-          templateMessage += `\n${template.icon} *${template.name}*\n` +
-            `${template.description}\n` +
-            `📊 Difficulty: ${template.difficulty} | Steps: ${template.stepCount}\n`;
-        });
-      }
-      
-      templateMessage += `\n*Or start with a blank canvas and build your own custom flow!*`;
-
-      const keyboardButtons = [];
-      
-      // Add template buttons (limit to 6 for better UX)
-      const allTemplates = [
-        ...(templates.educational || []),
-        ...(templates.engagement || [])
-      ].slice(0, 6);
-      
-      allTemplates.forEach(template => {
-        keyboardButtons.push([
-          Markup.button.callback(
-            `${template.icon} ${template.name}`,
-            `use_template_${template.id}`
-          )
-        ]);
-      });
-
-      keyboardButtons.push([
-        Markup.button.callback('🆕 Start from Scratch', 'create_blank_flow'),
-        Markup.button.callback('⬅️ Back to Pathways', 'show_creation_pathways')
-      ]);
-
-      if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(templateMessage, {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard(keyboardButtons)
-        });
-        await ctx.answerCbQuery();
-      } else {
-        await ctx.replyWithMarkdown(templateMessage, Markup.inlineKeyboard(keyboardButtons));
-      }
-    } catch (error) {
-      console.error('Custom bot creation error:', error);
-      await ctx.reply('❌ Error loading templates. Please try again.');
-    }
-  }
-
-  // NEW: Handle template selection
-  static async handleTemplateSelection(ctx, templateId) {
-    try {
-      const templateService = new TemplateService();
-      const template = templateService.getTemplate(templateId);
-      
-      if (!template) {
-        await ctx.answerCbQuery('❌ Template not found');
-        return;
-      }
-
-      const templateInfo = `📋 *Template: ${template.name}*\n\n` +
-        `*Description:* ${template.description}\n` +
-        `*Category:* ${template.category.charAt(0).toUpperCase() + template.category.slice(1)}\n` +
-        `*Difficulty:* ${template.difficulty}\n` +
-        `*Steps:* ${template.flow.steps.length}\n\n` +
-        `*Features included:*\n` +
-        `• Pre-configured logic flow\n` +
-        `• Ready-to-use questions and messages\n` +
-        `• Easy customization options\n\n` +
-        `Ready to create your bot with this template?`;
-
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('✅ Create Bot with Template', `confirm_template_${templateId}`)],
-        [Markup.button.callback('⬅️ Back to Templates', 'create_custom_bot')]
-      ]);
-
-      await ctx.editMessageText(templateInfo, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-      await ctx.answerCbQuery();
-    } catch (error) {
-      console.error('Template selection error:', error);
-      await ctx.answerCbQuery('❌ Error loading template');
-    }
-  }
-
-  // NEW: Handle template confirmation and start bot creation
-  static async handleTemplateConfirmation(ctx, templateId) {
-    try {
-      await ctx.answerCbQuery('🛠️ Starting bot creation...');
-      const { handleCustomBotCreation } = require('./createBotHandler');
-      await handleCustomBotCreation(ctx, templateId);
-    } catch (error) {
-      console.error('Template confirmation error:', error);
-      await ctx.answerCbQuery('❌ Error starting bot creation');
-    }
-  }
-
-  // NEW: Handle blank flow creation
-  static async handleBlankFlowCreation(ctx) {
-    try {
-      await ctx.answerCbQuery('🛠️ Starting blank bot creation...');
-      const { handleCustomBotCreation } = require('./createBotHandler');
-      await handleCustomBotCreation(ctx);
-    } catch (error) {
-      console.error('Blank flow creation error:', error);
-      await ctx.answerCbQuery('❌ Error starting bot creation');
-    }
-  }
-
-// NEW: Enhanced custom commands management to show actual flows
-  static async handleCustomCommands(ctx, botId) {
-    try {
-      const bot = await Bot.findByPk(botId);
-      if (!bot) {
-        await ctx.answerCbQuery('❌ Bot not found');
-        return;
-      }
-
-      let message = `🛠️ *Custom Commands - ${bot.bot_name}*\n\n`;
-      
-      if (bot.custom_flow_data) {
-        const flow = bot.custom_flow_data;
-        message += `*Active Custom Flow:* 🟢\n\n` +
-          `*Flow Name:* ${flow.name || 'Custom Flow'}\n` +
-          `*Steps:* ${flow.steps ? flow.steps.length : 0}\n` +
-          `*Status:* Active and running\n\n` +
-          `*Available Commands:*\n`;
-        
-        // Show available triggers
-        if (flow.steps) {
-          const triggers = flow.steps.filter(step => step.type === 'trigger');
-          if (triggers.length > 0) {
-            triggers.forEach(trigger => {
-              message += `• \`${trigger.trigger}\` - ${trigger.description || 'Custom command'}\n`;
-            });
-          } else {
-            message += `• Use /start to begin the flow\n`;
-          }
-        }
-        
-        message += `\n*Users can interact with your custom flow automatically!*`;
-      } else {
-        message += `*No custom flows configured*\n\n` +
-          `*Available Commands:*\n` +
-          `• Use /start to begin interactions\n` +
-          `• All template flows are active\n` +
-          `• Users can interact with your bot\n\n` +
-          `*Next Steps:*\n` +
-          `• Monitor user interactions in your bot\n` +
-          `• Use /dashboard for admin features\n` +
-          `• Add more custom logic as needed`;
-      }
-
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.url('🔗 Open Bot', `https://t.me/${bot.bot_username}`)],
-        [Markup.button.callback('📊 View Statistics', `stats_${botId}`)],
-        [Markup.button.callback('⬅️ Back to Dashboard', `bot_dashboard_${botId}`)]
-      ]);
-
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-      await ctx.answerCbQuery();
-    } catch (error) {
-      console.error('Custom commands error:', error);
-      await ctx.answerCbQuery('❌ Error loading custom commands');
-    }
-  }
-
-  // NEW: Handle view flows
-  static async handleViewFlows(ctx, botId) {
-    try {
-      const bot = await Bot.findByPk(botId);
-      if (!bot) {
-        await ctx.answerCbQuery('❌ Bot not found');
-        return;
-      }
-
-      let message = `📋 *Active Flows - ${bot.bot_name}*\n\n`;
-      
-      if (bot.custom_flow_data) {
-        const flow = bot.custom_flow_data;
-        message += `*Template Flow:* Active\n` +
-          `*Steps:* ${flow.steps ? flow.steps.length : 0}\n` +
-          `*Status:* 🟢 Running\n\n` +
-          `*Flow Overview:*\n`;
-        
-        if (flow.steps) {
-          flow.steps.forEach((step, index) => {
-            const stepTypes = {
-              'send_message': '💬 Send Message',
-              'ask_question': '❓ Ask Question', 
-              'conditional': '🔄 Conditional Logic',
-              'set_variable': '💾 Set Variable',
-              'wait': '⏰ Wait'
-            };
-            message += `${index + 1}. ${stepTypes[step.type] || step.type}\n`;
-          });
-        }
-      } else {
-        message += `*No custom flows configured*\n\n` +
-          `You can add custom flows using the template system.`;
-      }
-
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🛠️ Manage Commands', `custom_commands_${botId}`)],
-        [Markup.button.callback('⬅️ Back to Dashboard', `bot_dashboard_${botId}`)]
-      ]);
-
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        ...keyboard
-      });
-      await ctx.answerCbQuery();
-    } catch (error) {
-      console.error('View flows error:', error);
-      await ctx.answerCbQuery('❌ Error loading flows');
-    }
-  }
 }
 
 // Register the class methods as bot handlers
 module.exports = (bot) => {
-  console.log('✅ BotManagementHandler loaded with Custom Command support');
+  console.log('✅ BotManagementHandler loaded');
+  
+  // Register commands
+  //bot.command('mybots', BotManagementHandler.handleMyBots);
   
   // Register actions
   bot.action(/bot_dashboard_(.+)/, async (ctx) => {
@@ -650,36 +383,6 @@ module.exports = (bot) => {
         }
       );
     }
-  });
-
-  // NEW: Custom command handlers - PRODUCTION READY
-  bot.action('create_custom_bot', async (ctx) => {
-    await BotManagementHandler.handleCustomBotCreation(ctx);
-  });
-
-  bot.action(/use_template_(.+)/, async (ctx) => {
-    const templateId = ctx.match[1];
-    await BotManagementHandler.handleTemplateSelection(ctx, templateId);
-  });
-
-  bot.action(/confirm_template_(.+)/, async (ctx) => {
-    const templateId = ctx.match[1];
-    await BotManagementHandler.handleTemplateConfirmation(ctx, templateId);
-  });
-
-  bot.action('create_blank_flow', async (ctx) => {
-    await BotManagementHandler.handleBlankFlowCreation(ctx);
-  });
-
-  // NEW: Custom command management callbacks - PRODUCTION READY
-  bot.action(/custom_commands_(.+)/, async (ctx) => {
-    const botId = ctx.match[1];
-    await BotManagementHandler.handleCustomCommands(ctx, botId);
-  });
-
-  bot.action(/view_flows_(.+)/, async (ctx) => {
-    const botId = ctx.match[1];
-    await BotManagementHandler.handleViewFlows(ctx, botId);
   });
 };
 
