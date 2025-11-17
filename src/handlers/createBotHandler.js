@@ -322,7 +322,7 @@ const handleNameInput = async (ctx) => {
     return;
   }
   
-  // SIMPLE FIX: Get all user's bots and check names manually (SQLite compatible)
+  // Check for existing bot names
   const userBots = await Bot.findAll({
     where: { owner_id: userId }
   });
@@ -355,38 +355,50 @@ const handleNameInput = async (ctx) => {
       return;
     }
     
+    // CRITICAL FIX: Ensure bot_type is explicitly set and preserved
+    const botType = session.data.bot_type || 'quick';
+    
     // Prepare bot data - CRITICAL: Ensure bot_type is preserved
     const botData = {
       bot_id: botId,
       owner_id: userId,
-      bot_token: session.data.token, // Will be encrypted automatically
+      bot_token: session.data.token,
       bot_name: botName,
       bot_username: session.data.bot_username,
-      bot_type: session.data.bot_type || 'quick' // This ensures custom type is saved
+      bot_type: botType, // Explicitly set the bot type
+      welcome_message: "👋 Hello! I'm here to help you get in touch with the admin. Just send me a message!"
     };
     
     // DEBUG: Log before creation
     console.log(`🔧 FINAL DEBUG - Creating bot with:`, {
       name: botName,
-      type: session.data.bot_type,
+      type: botType,
       username: session.data.bot_username,
       has_template: !!session.data.template_id
     });
     
     // Add template flow data for custom bots
-    if (session.data.bot_type === 'custom' && session.data.template_id) {
+    if (botType === 'custom' && session.data.template_id) {
       const templateService = new TemplateService();
       const template = templateService.getTemplate(session.data.template_id);
       if (template) {
         botData.custom_flow_data = template.flow;
-        console.log(`📋 Template applied: ${template.name}`); // Debug log
+        console.log(`📋 Template applied: ${template.name}`);
       }
+    } else if (botType === 'custom') {
+      // Initialize empty custom flow data for custom bots without templates
+      botData.custom_flow_data = {
+        version: '1.0',
+        steps: [],
+        welcome_flow: null
+      };
+      console.log(`🆕 Initialized empty custom flow for new custom bot`);
     }
     
-    // Create bot record (token will be encrypted by model hook)
+    // Create bot record
     const bot = await Bot.create(botData);
     
-    // DEBUG: Log after creation
+    // DEBUG: Verify creation
     console.log(`✅ Bot created in database:`, {
       id: bot.id,
       name: bot.bot_name,
@@ -395,7 +407,11 @@ const handleNameInput = async (ctx) => {
       custom_flow: !!bot.custom_flow_data
     });
     
-    // Add owner as admin with full permissions
+    // Verify the bot type was saved correctly
+    const savedBot = await Bot.findByPk(bot.id);
+    console.log(`🔍 VERIFICATION - Saved bot type: ${savedBot.bot_type}`);
+    
+    // Add owner as admin
     await Admin.create({
       bot_id: bot.id,
       admin_user_id: userId,
@@ -420,16 +436,16 @@ const handleNameInput = async (ctx) => {
     // Cleanup session FIRST before sending messages
     botCreationSessions.delete(userId);
     
-    const botType = session.data.bot_type === 'custom' ? 'Custom Command Bot' : 'Quick Mini-Bot';
-    const botTypeEmoji = session.data.bot_type === 'custom' ? '🛠️' : '🎯';
+    const botTypeDisplay = botType === 'custom' ? 'Custom Command Bot' : 'Quick Mini-Bot';
+    const botTypeEmoji = botType === 'custom' ? '🛠️' : '🎯';
     
-    let successMessage = `${botTypeEmoji} *${botType} Created Successfully!*\n\n` +
+    let successMessage = `${botTypeEmoji} *${botTypeDisplay} Created Successfully!*\n\n` +
       `*Bot Name:* ${botName}\n` +
       `*Bot Username:* @${session.data.bot_username}\n` +
       `*Bot ID:* \`${botId}\`\n` +
-      `*Bot Type:* ${botType}\n\n`;
+      `*Bot Type:* ${botTypeDisplay}\n\n`;
     
-    if (session.data.bot_type === 'custom') {
+    if (botType === 'custom') {
       if (session.data.template_id) {
         const templateService = new TemplateService();
         const template = templateService.getTemplate(session.data.template_id);
@@ -461,7 +477,7 @@ const handleNameInput = async (ctx) => {
     try {
       const MiniBotManager = require('../services/MiniBotManager');
       await MiniBotManager.initializeBot(bot);
-      console.log(`✅ Mini-bot initialized: ${botName} (@${session.data.bot_username}) as ${session.data.bot_type} type`);
+      console.log(`✅ Mini-bot initialized: ${botName} (@${session.data.bot_username}) as ${botType} type`);
     } catch (initError) {
       console.error('Failed to initialize mini-bot:', initError);
       // Don't spam the user with initialization errors
