@@ -29,7 +29,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Platform admin dashboard
+  // Platform admin dashboard - FIXED: Use HTML instead of MarkdownV2
   static async platformDashboard(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -70,17 +70,19 @@ class PlatformAdminHandler {
         })
       ]);
 
-      const dashboardMessage = `👑 *Platform Admin Dashboard*\n\n` +
-        `📊 *Platform Statistics:*\n` +
-        `👥 Total Users: ${formatNumber(totalUsers)}\n` +
-        `👥 Active Today: ${formatNumber(todayUsers)}\n` +
-        `🤖 Bot Owners: ${formatNumber(totalBotOwners)}\n` +
-        `🤖 Total Bots: ${formatNumber(totalBots)}\n` +
-        `🟢 Active Bots: ${formatNumber(activeBots)}\n` +
-        `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
-        `📨 Pending Messages: ${formatNumber(pendingMessages)}\n` +
-        `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n\n` +
-        `*Admin Actions:*`;
+      // FIXED: Use HTML formatting to avoid MarkdownV2 parsing issues
+      const dashboardMessage = 
+        `<b>👑 Platform Admin Dashboard</b>\n\n` +
+        `<b>📊 Platform Statistics:</b>\n` +
+        `👥 Total Users: <code>${formatNumber(totalUsers)}</code>\n` +
+        `👥 Active Today: <code>${formatNumber(todayUsers)}</code>\n` +
+        `🤖 Bot Owners: <code>${formatNumber(totalBotOwners)}</code>\n` +
+        `🤖 Total Bots: <code>${formatNumber(totalBots)}</code>\n` +
+        `🟢 Active Bots: <code>${formatNumber(activeBots)}</code>\n` +
+        `💬 Total Messages: <code>${formatNumber(totalMessages)}</code>\n` +
+        `📨 Pending Messages: <code>${formatNumber(pendingMessages)}</code>\n` +
+        `📢 Total Broadcasts: <code>${formatNumber(totalBroadcasts)}</code>\n\n` +
+        `<b>Admin Actions:</b>`;
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('👥 User Management', 'platform_users')],
@@ -94,7 +96,7 @@ class PlatformAdminHandler {
       if (ctx.updateType === 'callback_query') {
         try {
           await ctx.editMessageText(dashboardMessage, {
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML', // FIXED: Use HTML instead of Markdown
             ...keyboard
           });
         } catch (error) {
@@ -108,7 +110,10 @@ class PlatformAdminHandler {
         }
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(dashboardMessage, keyboard);
+        await ctx.reply(dashboardMessage, { 
+          parse_mode: 'HTML',
+          ...keyboard 
+        });
       }
 
     } catch (error) {
@@ -121,7 +126,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // User management with pagination - FIXED: Markdown escaping
+  // User management with pagination - FIXED: Use HTML formatting
   static async userManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -144,22 +149,21 @@ class PlatformAdminHandler {
 
       const totalPages = Math.ceil(count / limit);
 
-      let message = `👥 *User Management* \\- Page ${page}/${totalPages}\n\n` +
-        `*Total Users:* ${formatNumber(count)}\n\n` +
-        `*Recent Users:*\n`;
+      // FIXED: Use HTML formatting to avoid MarkdownV2 escaping issues
+      let message = 
+        `<b>👥 User Management - Page ${page}/${totalPages}</b>\n\n` +
+        `<b>Total Users:</b> <code>${formatNumber(count)}</code>\n\n` +
+        `<b>Recent Users:</b>\n`;
 
       users.forEach((user, index) => {
-        // FIXED: Escape all user data for Markdown
-        const escapedUsername = user.username ? this.escapeMarkdown(user.username) : '';
-        const escapedFirstName = this.escapeMarkdown(user.first_name);
-        
         const userInfo = user.username ? 
-          `@${escapedUsername} \\(${escapedFirstName}\\)` : 
-          `${escapedFirstName} \\(ID: ${user.telegram_id}\\)`;
+          `@${user.username} (${user.first_name})` : 
+          `${user.first_name} (ID: ${user.telegram_id})`;
         
         const status = user.is_banned ? '🚫 BANNED' : '✅ Active';
         
-        message += `*${offset + index + 1}\\.* ${userInfo}\n` +
+        message += 
+          `<b>${offset + index + 1}.</b> ${userInfo}\n` +
           `   Status: ${status}\n` +
           `   Last Active: ${user.last_active.toLocaleDateString()}\n\n`;
       });
@@ -187,12 +191,15 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2', // Use MarkdownV2 for better escaping
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...keyboard
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, keyboard);
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...keyboard 
+        });
       }
 
     } catch (error) {
@@ -205,7 +212,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Bot management with detailed info - FIXED: Markdown escaping
+  // Bot management with detailed info - FIXED: Use HTML formatting
   static async botManagement(ctx, page = 1) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -233,28 +240,26 @@ class PlatformAdminHandler {
 
       const totalPages = Math.ceil(count / limit);
 
-      let message = `🤖 *Bot Management* \\- Page ${page}/${totalPages}\n\n` +
-        `*Total Bots:* ${formatNumber(count)}\n\n` +
-        `*Recent Bots:*\n`;
+      // FIXED: Use HTML formatting
+      let message = 
+        `<b>🤖 Bot Management - Page ${page}/${totalPages}</b>\n\n` +
+        `<b>Total Bots:</b> <code>${formatNumber(count)}</code>\n\n` +
+        `<b>Recent Bots:</b>\n`;
 
       bots.forEach((bot, index) => {
-        // FIXED: Escape all bot and owner data for Markdown
-        const escapedBotName = this.escapeMarkdown(bot.bot_name);
-        const escapedBotUsername = this.escapeMarkdown(bot.bot_username);
-        
         let ownerInfo;
         if (bot.Owner) {
-          const escapedOwnerUsername = bot.Owner.username ? this.escapeMarkdown(bot.Owner.username) : '';
           ownerInfo = bot.Owner.is_banned ? 
-            `@${escapedOwnerUsername} 🚫` : 
-            `@${escapedOwnerUsername}`;
+            `@${bot.Owner.username} 🚫` : 
+            `@${bot.Owner.username}`;
         } else {
           ownerInfo = `User#${bot.owner_id}`;
         }
         
         const status = bot.is_active ? '🟢 Active' : '🔴 Inactive';
         
-        message += `*${offset + index + 1}\\.* ${escapedBotName} \\(@${escapedBotUsername}\\)\n` +
+        message += 
+          `<b>${offset + index + 1}.</b> ${bot.bot_name} (@${bot.bot_username})\n` +
           `   Owner: ${ownerInfo}\n` +
           `   Status: ${status}\n` +
           `   Created: ${bot.created_at.toLocaleDateString()}\n\n`;
@@ -281,12 +286,15 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2', // Use MarkdownV2 for better escaping
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...keyboard
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, keyboard);
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...keyboard 
+        });
       }
 
     } catch (error) {
@@ -299,7 +307,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Ban management - FIXED: Markdown escaping
+  // Ban management - FIXED: Use HTML formatting
   static async banManagement(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -317,25 +325,23 @@ class PlatformAdminHandler {
         limit: 15
       });
 
-      let message = `🚫 *Ban Management*\n\n` +
-        `*Banned Users:* ${bannedUsers.length}\n\n`;
+      // FIXED: Use HTML formatting
+      let message = 
+        `<b>🚫 Ban Management</b>\n\n` +
+        `<b>Banned Users:</b> <code>${bannedUsers.length}</code>\n\n`;
 
       if (bannedUsers.length === 0) {
-        message += `No users are currently banned\\.`;
+        message += `No users are currently banned.`;
       } else {
         bannedUsers.forEach((user, index) => {
-          // FIXED: Escape user data
-          const escapedUsername = user.username ? this.escapeMarkdown(user.username) : '';
-          const escapedFirstName = this.escapeMarkdown(user.first_name);
-          const escapedBanReason = this.escapeMarkdown(user.ban_reason || 'Not specified');
-          
           const userInfo = user.username ? 
-            `@${escapedUsername} \\(${escapedFirstName}\\)` : 
-            `${escapedFirstName} \\(ID: ${user.telegram_id}\\)`;
+            `@${user.username} (${user.first_name})` : 
+            `${user.first_name} (ID: ${user.telegram_id})`;
           
-          message += `*${index + 1}\\.* ${userInfo}\n` +
+          message += 
+            `<b>${index + 1}.</b> ${userInfo}\n` +
             `   Banned: ${user.banned_at ? user.banned_at.toLocaleDateString() : 'Unknown'}\n` +
-            `   Reason: ${escapedBanReason}\n\n`;
+            `   Reason: ${user.ban_reason || 'Not specified'}\n\n`;
         });
       }
 
@@ -347,12 +353,15 @@ class PlatformAdminHandler {
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...keyboard
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, keyboard);
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...keyboard 
+        });
       }
 
     } catch (error) {
@@ -365,7 +374,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Start ban user process
+  // Start ban user process - FIXED: Use HTML formatting
   static async startBanUser(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -382,27 +391,30 @@ class PlatformAdminHandler {
         step: 'awaiting_user_id'
       });
 
-      const message = `🚫 *Ban User*\n\n` +
+      // FIXED: Use HTML formatting
+      const message = 
+        `<b>🚫 Ban User</b>\n\n` +
         `Please provide the user's Telegram ID or username to ban:\n\n` +
-        `*Examples:*\n` +
-        `• 123456789 \\(User ID\\)\n` +
+        `<b>Examples:</b>\n` +
+        `• 123456789 (User ID)\n` +
         `• @username\n\n` +
-        `*Cancel:* Type /cancel`;
+        `<b>Cancel:</b> Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
-        );
+        });
       }
 
     } catch (error) {
@@ -415,7 +427,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Start unban user process
+  // Start unban user process - FIXED: Use HTML formatting
   static async startUnbanUser(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -432,27 +444,30 @@ class PlatformAdminHandler {
         step: 'awaiting_user_id'
       });
 
-      const message = `✅ *Unban User*\n\n` +
+      // FIXED: Use HTML formatting
+      const message = 
+        `<b>✅ Unban User</b>\n\n` +
         `Please provide the user's Telegram ID or username to unban:\n\n` +
-        `*Examples:*\n` +
-        `• 123456789 \\(User ID\\)\n` +
+        `<b>Examples:</b>\n` +
+        `• 123456789 (User ID)\n` +
         `• @username\n\n` +
-        `*Cancel:* Type /cancel`;
+        `<b>Cancel:</b> Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bans')]
           ])
-        );
+        });
       }
 
     } catch (error) {
@@ -465,7 +480,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Platform broadcast - FIXED: Use MarkdownV2
+  // Platform broadcast - FIXED: Use HTML formatting
   static async startPlatformBroadcast(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -484,26 +499,29 @@ class PlatformAdminHandler {
         step: 'awaiting_message'
       });
 
-      const message = `📢 *Platform Broadcast*\n\n` +
-        `*Recipients:* ${formatNumber(totalUsers)} users\n\n` +
-        `⚠️ *Important:* This will send a message to ALL users of the platform\\.\n\n` +
+      // FIXED: Use HTML formatting
+      const message = 
+        `<b>📢 Platform Broadcast</b>\n\n` +
+        `<b>Recipients:</b> <code>${formatNumber(totalUsers)}</code> users\n\n` +
+        `⚠️ <b>Important:</b> This will send a message to ALL users of the platform.\n\n` +
         `Please type your broadcast message:\n\n` +
-        `*Cancel:* Type /cancel`;
+        `<b>Cancel:</b> Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
           ])
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_dashboard')]
           ])
-        );
+        });
       }
 
     } catch (error) {
@@ -516,7 +534,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Send platform broadcast - FIXED: Use HTML parsing for better compatibility
+  // Send platform broadcast - ALREADY FIXED: Uses HTML
   static async sendPlatformBroadcast(ctx, message) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -530,12 +548,12 @@ class PlatformAdminHandler {
       });
 
       const progressMsg = await ctx.reply(
-        `📢 <b>Platform Broadcast Started</b>\n\n` +
-        `🔄 Sending to ${formatNumber(users.length)} users...\n` +
-        `✅ Sent: 0\n` +
-        `❌ Failed: 0\n` +
-        `⏰ Estimated time: ${Math.ceil(users.length / 20)} seconds`,
-        { parse_mode: 'HTML' } // Use HTML for progress messages
+        `<b>📢 Platform Broadcast Started</b>\n\n` +
+        `🔄 Sending to <code>${formatNumber(users.length)}</code> users...\n` +
+        `✅ Sent: <code>0</code>\n` +
+        `❌ Failed: <code>0</code>\n` +
+        `⏰ Estimated time: <code>${Math.ceil(users.length / 20)}</code> seconds`,
+        { parse_mode: 'HTML' }
       );
 
       let successCount = 0;
@@ -544,7 +562,7 @@ class PlatformAdminHandler {
 
       const startTime = Date.now();
 
-      // FIXED: Escape message for HTML to prevent parsing errors
+      // Escape message for HTML to prevent parsing errors
       const escapedMessage = message
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -555,7 +573,6 @@ class PlatformAdminHandler {
       for (let i = 0; i < users.length; i++) {
         const user = users[i];
         try {
-          // FIXED: Use HTML parse_mode for broadcast messages
           await ctx.telegram.sendMessage(user.telegram_id, escapedMessage, {
             parse_mode: 'HTML'
           });
@@ -570,11 +587,11 @@ class PlatformAdminHandler {
               ctx.chat.id,
               progressMsg.message_id,
               null,
-              `📢 <b>Platform Broadcast Progress</b>\n\n` +
-              `🔄 Sending to ${formatNumber(users.length)} users...\n` +
-              `✅ Sent: ${formatNumber(successCount)}\n` +
-              `❌ Failed: ${formatNumber(failCount)}\n` +
-              `⏰ Elapsed: ${elapsed}s \\| Remaining: ~${remaining}s`,
+              `<b>📢 Platform Broadcast Progress</b>\n\n` +
+              `🔄 Sending to <code>${formatNumber(users.length)}</code> users...\n` +
+              `✅ Sent: <code>${formatNumber(successCount)}</code>\n` +
+              `❌ Failed: <code>${formatNumber(failCount)}</code>\n` +
+              `⏰ Elapsed: <code>${elapsed}</code>s | Remaining: ~<code>${remaining}</code>s`,
               { parse_mode: 'HTML' }
             );
           }
@@ -612,20 +629,22 @@ class PlatformAdminHandler {
         console.error('Failed to save broadcast history:', dbError.message);
       }
 
-      let resultMessage = `✅ <b>Platform Broadcast Completed!</b>\n\n` +
+      let resultMessage = 
+        `<b>✅ Platform Broadcast Completed!</b>\n\n` +
         `<b>Summary:</b>\n` +
-        `👥 Total Recipients: ${formatNumber(users.length)}\n` +
-        `✅ Successful: ${formatNumber(successCount)}\n` +
-        `❌ Failed: ${formatNumber(failCount)}\n` +
-        `📊 Success Rate: ${successRate}%\n` +
-        `⏰ Total Time: ${totalTime} seconds\n\n`;
+        `👥 Total Recipients: <code>${formatNumber(users.length)}</code>\n` +
+        `✅ Successful: <code>${formatNumber(successCount)}</code>\n` +
+        `❌ Failed: <code>${formatNumber(failCount)}</code>\n` +
+        `📊 Success Rate: <code>${successRate}%</code>\n` +
+        `⏰ Total Time: <code>${totalTime}</code> seconds\n\n`;
 
       if (failCount > 0) {
-        resultMessage += `<b>Common failure reasons:</b>\n` +
+        resultMessage += 
+          `<b>Common failure reasons:</b>\n` +
           `• User blocked the bot\n` +
           `• User account deleted\n` +
           `• Rate limiting\n\n` +
-          `Failed users: ${failedUsers.length}`;
+          `Failed users: <code>${failedUsers.length}</code>`;
       }
 
       await ctx.telegram.editMessageText(
@@ -645,323 +664,327 @@ class PlatformAdminHandler {
     }
   }
 
-// Advanced analytics - FIXED: MarkdownV2 escaping
-static async advancedAnalytics(ctx) {
-  try {
-    if (!this.isPlatformCreator(ctx.from.id)) {
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Access denied');
-      } else {
-        await ctx.reply('❌ Access denied');
+  // Advanced analytics - FIXED: Use HTML formatting
+  static async advancedAnalytics(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
       }
-      return;
-    }
 
-    // Get analytics data for the last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      // Get analytics data for the last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const [
-      newUsers,
-      newBots,
-      activeUsers,
-      messagesStats
-    ] = await Promise.all([
-      User.count({
-        where: {
-          created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-        }
-      }),
-      Bot.count({
-        where: {
-          created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-        }
-      }),
-      User.count({
-        where: {
-          last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-        }
-      }),
-      Feedback.findAll({
-        where: {
-          created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
-        },
-        attributes: [
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
-          [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
-        ],
-        raw: true
-      })
-    ]);
-
-    const totalMessages = parseInt(messagesStats[0]?.total || 0);
-    const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
-    const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : '0';
-
-    // FIXED: Escape periods in percentages and properly escape all MarkdownV2 special chars
-    const analyticsMessage = 
-      '📊 \\*Advanced Analytics\\* \\(Last 30 Days\\)\n\n' +
-      '\\*User Growth:\\*\n' +
-      `👥 New Users: ${formatNumber(newUsers)}\n` +
-      `👥 Active Users: ${formatNumber(activeUsers)}\n\n` +
-      '\\*Bot Activity:\\*\n' +
-      `🤖 New Bots: ${formatNumber(newBots)}\n\n` +
-      '\\*Messaging:\\*\n' +
-      `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
-      `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
-      `📊 Reply Rate: ${replyRate.toString().replace('.', '\\.')}%\n\n` +
-      '\\*Platform Health:\\*\n' +
-      '🟢 System: Operational\n' +
-      '📈 Trend: Growing';
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
-      [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
-    ]);
-
-    if (ctx.updateType === 'callback_query') {
-      await ctx.editMessageText(analyticsMessage, {
-        parse_mode: 'MarkdownV2',
-        ...keyboard
-      });
-      await ctx.answerCbQuery();
-    } else {
-      await ctx.replyWithMarkdownV2(analyticsMessage, keyboard);
-    }
-
-  } catch (error) {
-    console.error('Advanced analytics error:', error);
-    if (ctx.updateType === 'callback_query') {
-      await ctx.answerCbQuery('❌ Error loading analytics');
-    } else {
-      await ctx.reply('❌ Error loading analytics');
-    }
-  }
-}
-
-// User statistics feature
-static async userStatistics(ctx) {
-  try {
-    if (!this.isPlatformCreator(ctx.from.id)) {
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Access denied');
-      } else {
-        await ctx.reply('❌ Access denied');
-      }
-      return;
-    }
-
-    // Get detailed user statistics
-    const [
-      totalUsers,
-      bannedUsers,
-      activeToday,
-      activeWeek,
-      newToday,
-      newWeek,
-      usersWithBots
-    ] = await Promise.all([
-      User.count(),
-      User.count({ where: { is_banned: true } }),
-      User.count({
-        where: {
-          last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-        }
-      }),
-      User.count({
-        where: {
-          last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-        }
-      }),
-      User.count({
-        where: {
-          created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-        }
-      }),
-      User.count({
-        where: {
-          created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-        }
-      }),
-      User.count({
-        include: [{
-          model: Bot,
-          as: 'OwnedBots',
-          required: true
-        }]
-      })
-    ]);
-
-    // Calculate percentages and escape them properly
-    const botOwnershipRate = ((usersWithBots / totalUsers) * 100).toFixed(1);
-    const userRetention = ((activeWeek / totalUsers) * 100).toFixed(1);
-    const growthRate = ((newWeek / totalUsers) * 100).toFixed(1);
-
-    // FIXED: Escape all special characters including periods in percentages
-    const statsMessage = 
-      '📊 \\*User Statistics\\*\n\n' +
-      '\\*Overview:\\*\n' +
-      `👥 Total Users: ${formatNumber(totalUsers)}\n` +
-      `🚫 Banned Users: ${formatNumber(bannedUsers)}\n` +
-      `✅ Active Users: ${formatNumber(totalUsers - bannedUsers)}\n\n` +
-      
-      '\\*Activity:\\*\n' +
-      `📈 Active Today: ${formatNumber(activeToday)}\n` +
-      `📈 Active This Week: ${formatNumber(activeWeek)}\n` +
-      `🆕 New Today: ${formatNumber(newToday)}\n` +
-      `🆕 New This Week: ${formatNumber(newWeek)}\n\n` +
-      
-      '\\*Bot Ownership:\\*\n' +
-      `🤖 Users with Bots: ${formatNumber(usersWithBots)}\n` +
-      `📊 Bot Ownership Rate: ${botOwnershipRate.replace('.', '\\.')}%\n\n` +
-      
-      '\\*Platform Health:\\*\n' +
-      `📱 User Retention: ${userRetention.replace('.', '\\.')}%\n` +
-      `🚀 Growth Rate: ${growthRate.replace('.', '\\.')}%`;
-
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
-      [Markup.button.callback('📋 Export Users', 'platform_export_users')],
-      [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
-    ]);
-
-    if (ctx.updateType === 'callback_query') {
-      await ctx.editMessageText(statsMessage, {
-        parse_mode: 'MarkdownV2',
-        ...keyboard
-      });
-      await ctx.answerCbQuery();
-    } else {
-      await ctx.replyWithMarkdownV2(statsMessage, keyboard);
-    }
-
-  } catch (error) {
-    console.error('User statistics error:', error);
-    if (ctx.updateType === 'callback_query') {
-      await ctx.answerCbQuery('❌ Error loading user statistics');
-    } else {
-      await ctx.reply('❌ Error loading user statistics');
-    }
-  }
-}
-
-// Detailed reports feature - FIXED: Database compatibility
-static async detailedReports(ctx) {
-  try {
-    if (!this.isPlatformCreator(ctx.from.id)) {
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery('❌ Access denied');
-      } else {
-        await ctx.reply('❌ Access denied');
-      }
-      return;
-    }
-
-    // Get comprehensive platform reports - FIXED: Simplified queries
-    const [
-      userGrowth,
-      botGrowth,
-      messageStats,
-      broadcastStats,
-      totalUsers
-    ] = await Promise.all([
-      // Simplified user growth query
-      User.count({
-        where: {
-          created_at: { 
-            [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) 
+      const [
+        newUsers,
+        newBots,
+        activeUsers,
+        messagesStats
+      ] = await Promise.all([
+        User.count({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
           }
-        }
-      }),
-      // Simplified bot growth query
-      Bot.count({
-        where: {
-          created_at: { 
-            [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) 
+        }),
+        Bot.count({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
           }
-        }
-      }),
-      // Message statistics - FIXED: Simplified approach
-      Feedback.findAll({
-        attributes: [
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
-          [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
-        ],
-        raw: true
-      }),
-      // Broadcast statistics - FIXED: Simplified approach
-      BroadcastHistory.findAll({
-        attributes: [
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
-          [require('sequelize').fn('SUM', require('sequelize').col('total_users')), 'total_recipients'],
-          [require('sequelize').fn('AVG', require('sequelize').col('successful_sends')), 'avg_success_rate']
-        ],
-        raw: true
-      }),
-      // Total users for calculations
-      User.count()
-    ]);
+        }),
+        User.count({
+          where: {
+            last_active: { [require('sequelize').Op.gte]: thirtyDaysAgo }
+          }
+        }),
+        Feedback.findAll({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: thirtyDaysAgo }
+          },
+          attributes: [
+            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+            [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
+          ],
+          raw: true
+        })
+      ]);
 
-    // FIXED: Safe parsing of database results
-    const totalMessages = parseInt(messageStats[0]?.total || 0);
-    const repliedMessages = parseInt(messageStats[0]?.replied || 0);
-    const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
-    const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
-    const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
+      const totalMessages = parseInt(messagesStats[0]?.total || 0);
+      const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
+      const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : '0';
 
-    // Calculate rates safely
-    const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : '0';
-    const userGrowthRate = totalUsers > 0 ? ((userGrowth / totalUsers) * 100).toFixed(1) : '0';
+      // FIXED: Use HTML formatting
+      const analyticsMessage = 
+        '<b>📊 Advanced Analytics (Last 30 Days)</b>\n\n' +
+        '<b>User Growth:</b>\n' +
+        `👥 New Users: <code>${formatNumber(newUsers)}</code>\n` +
+        `👥 Active Users: <code>${formatNumber(activeUsers)}</code>\n\n` +
+        '<b>Bot Activity:</b>\n' +
+        `🤖 New Bots: <code>${formatNumber(newBots)}</code>\n\n` +
+        '<b>Messaging:</b>\n' +
+        `💬 Total Messages: <code>${formatNumber(totalMessages)}</code>\n` +
+        `✅ Replied Messages: <code>${formatNumber(repliedMessages)}</code>\n` +
+        `📊 Reply Rate: <code>${replyRate}%</code>\n\n` +
+        '<b>Platform Health:</b>\n' +
+        '🟢 System: Operational\n' +
+        '📈 Trend: Growing';
 
-    // FIXED: Proper MarkdownV2 escaping
-    let reportsMessage = 
-      '📈 \\*Detailed Platform Reports\\*\n\n' +
-      '\\*Message Analytics:\\*\n' +
-      `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
-      `✅ Replied Messages: ${formatNumber(repliedMessages)}\n` +
-      `📊 Reply Rate: ${replyRate.toString().replace('.', '\\.')}%\n\n` +
-      
-      '\\*Broadcast Performance:\\*\n' +
-      `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n` +
-      `👥 Total Recipients: ${formatNumber(totalRecipients)}\n` +
-      `📈 Avg Success Rate: ${avgSuccessRate.toFixed(1).replace('.', '\\.')}%\n\n` +
-      
-      '\\*Growth Trends \\(Last 7 Days\\):\\*\n' +
-      `👥 New Users: ${formatNumber(userGrowth)}\n` +
-      `🤖 New Bots: ${formatNumber(botGrowth)}\n\n` +
-      
-      '\\*Platform Insights:\\*\n' +
-      `📱 Daily User Growth Rate: ${userGrowthRate.replace('.', '\\.')}%\n` +
-      `🚀 Bot Creation Rate: ${((botGrowth / 7) || 0).toFixed(1).replace('.', '\\.')} bots/day\n` +
-      `💬 Message Activity: ${((totalMessages / 30) || 0).toFixed(1).replace('.', '\\.')} msgs/day`;
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
+        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+      ]);
 
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📊 User Statistics', 'platform_user_stats')],
-      [Markup.button.callback('📋 Export Data', 'platform_export_users')],
-      [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
-    ]);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(analyticsMessage, {
+          parse_mode: 'HTML', // FIXED: Use HTML
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.reply(analyticsMessage, { 
+          parse_mode: 'HTML',
+          ...keyboard 
+        });
+      }
 
-    if (ctx.updateType === 'callback_query') {
-      await ctx.editMessageText(reportsMessage, {
-        parse_mode: 'MarkdownV2',
-        ...keyboard
-      });
-      await ctx.answerCbQuery();
-    } else {
-      await ctx.replyWithMarkdownV2(reportsMessage, keyboard);
-    }
-
-  } catch (error) {
-    console.error('Detailed reports error:', error);
-    if (ctx.updateType === 'callback_query') {
-      await ctx.answerCbQuery('❌ Error loading detailed reports');
-    } else {
-      await ctx.reply('❌ Error loading detailed reports');
+    } catch (error) {
+      console.error('Advanced analytics error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading analytics');
+      } else {
+        await ctx.reply('❌ Error loading analytics');
+      }
     }
   }
-}
 
-  // Bot toggle feature
+  // User statistics feature - FIXED: Use HTML formatting
+  static async userStatistics(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
+      }
+
+      // Get detailed user statistics
+      const [
+        totalUsers,
+        bannedUsers,
+        activeToday,
+        activeWeek,
+        newToday,
+        newWeek,
+        usersWithBots
+      ] = await Promise.all([
+        User.count(),
+        User.count({ where: { is_banned: true } }),
+        User.count({
+          where: {
+            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          where: {
+            last_active: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          where: {
+            created_at: { [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+          }
+        }),
+        User.count({
+          include: [{
+            model: Bot,
+            as: 'OwnedBots',
+            required: true
+          }]
+        })
+      ]);
+
+      // Calculate percentages
+      const botOwnershipRate = ((usersWithBots / totalUsers) * 100).toFixed(1);
+      const userRetention = ((activeWeek / totalUsers) * 100).toFixed(1);
+      const growthRate = ((newWeek / totalUsers) * 100).toFixed(1);
+
+      // FIXED: Use HTML formatting
+      const statsMessage = 
+        '<b>📊 User Statistics</b>\n\n' +
+        '<b>Overview:</b>\n' +
+        `👥 Total Users: <code>${formatNumber(totalUsers)}</code>\n` +
+        `🚫 Banned Users: <code>${formatNumber(bannedUsers)}</code>\n` +
+        `✅ Active Users: <code>${formatNumber(totalUsers - bannedUsers)}</code>\n\n` +
+        
+        '<b>Activity:</b>\n' +
+        `📈 Active Today: <code>${formatNumber(activeToday)}</code>\n` +
+        `📈 Active This Week: <code>${formatNumber(activeWeek)}</code>\n` +
+        `🆕 New Today: <code>${formatNumber(newToday)}</code>\n` +
+        `🆕 New This Week: <code>${formatNumber(newWeek)}</code>\n\n` +
+        
+        '<b>Bot Ownership:</b>\n' +
+        `🤖 Users with Bots: <code>${formatNumber(usersWithBots)}</code>\n` +
+        `📊 Bot Ownership Rate: <code>${botOwnershipRate}%</code>\n\n` +
+        
+        '<b>Platform Health:</b>\n' +
+        `📱 User Retention: <code>${userRetention}%</code>\n` +
+        `🚀 Growth Rate: <code>${growthRate}%</code>`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📈 Detailed Reports', 'platform_detailed_reports')],
+        [Markup.button.callback('📋 Export Users', 'platform_export_users')],
+        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(statsMessage, {
+          parse_mode: 'HTML', // FIXED: Use HTML
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.reply(statsMessage, { 
+          parse_mode: 'HTML',
+          ...keyboard 
+        });
+      }
+
+    } catch (error) {
+      console.error('User statistics error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading user statistics');
+      } else {
+        await ctx.reply('❌ Error loading user statistics');
+      }
+    }
+  }
+
+  // Detailed reports feature - FIXED: Use HTML formatting
+  static async detailedReports(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        if (ctx.updateType === 'callback_query') {
+          await ctx.answerCbQuery('❌ Access denied');
+        } else {
+          await ctx.reply('❌ Access denied');
+        }
+        return;
+      }
+
+      // Get comprehensive platform reports
+      const [
+        userGrowth,
+        botGrowth,
+        messageStats,
+        broadcastStats,
+        totalUsers
+      ] = await Promise.all([
+        User.count({
+          where: {
+            created_at: { 
+              [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) 
+            }
+          }
+        }),
+        Bot.count({
+          where: {
+            created_at: { 
+              [require('sequelize').Op.gte]: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) 
+            }
+          }
+        }),
+        Feedback.findAll({
+          attributes: [
+            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+            [require('sequelize').fn('SUM', require('sequelize').literal('CASE WHEN is_replied = true THEN 1 ELSE 0 END')), 'replied']
+          ],
+          raw: true
+        }),
+        BroadcastHistory.findAll({
+          attributes: [
+            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'total'],
+            [require('sequelize').fn('SUM', require('sequelize').col('total_users')), 'total_recipients'],
+            [require('sequelize').fn('AVG', require('sequelize').col('successful_sends')), 'avg_success_rate']
+          ],
+          raw: true
+        }),
+        User.count()
+      ]);
+
+      // Safe parsing of database results
+      const totalMessages = parseInt(messageStats[0]?.total || 0);
+      const repliedMessages = parseInt(messageStats[0]?.replied || 0);
+      const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
+      const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
+      const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
+
+      // Calculate rates safely
+      const replyRate = totalMessages > 0 ? ((repliedMessages / totalMessages) * 100).toFixed(1) : '0';
+      const userGrowthRate = totalUsers > 0 ? ((userGrowth / totalUsers) * 100).toFixed(1) : '0';
+
+      // FIXED: Use HTML formatting
+      let reportsMessage = 
+        '<b>📈 Detailed Platform Reports</b>\n\n' +
+        '<b>Message Analytics:</b>\n' +
+        `💬 Total Messages: <code>${formatNumber(totalMessages)}</code>\n` +
+        `✅ Replied Messages: <code>${formatNumber(repliedMessages)}</code>\n` +
+        `📊 Reply Rate: <code>${replyRate}%</code>\n\n` +
+        
+        '<b>Broadcast Performance:</b>\n' +
+        `📢 Total Broadcasts: <code>${formatNumber(totalBroadcasts)}</code>\n` +
+        `👥 Total Recipients: <code>${formatNumber(totalRecipients)}</code>\n` +
+        `📈 Avg Success Rate: <code>${avgSuccessRate.toFixed(1)}%</code>\n\n` +
+        
+        '<b>Growth Trends (Last 7 Days):</b>\n' +
+        `👥 New Users: <code>${formatNumber(userGrowth)}</code>\n` +
+        `🤖 New Bots: <code>${formatNumber(botGrowth)}</code>\n\n` +
+        
+        '<b>Platform Insights:</b>\n' +
+        `📱 Daily User Growth Rate: <code>${userGrowthRate}%</code>\n` +
+        `🚀 Bot Creation Rate: <code>${((botGrowth / 7) || 0).toFixed(1)}</code> bots/day\n` +
+        `💬 Message Activity: <code>${((totalMessages / 30) || 0).toFixed(1)}</code> msgs/day`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📊 User Statistics', 'platform_user_stats')],
+        [Markup.button.callback('📋 Export Data', 'platform_export_users')],
+        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(reportsMessage, {
+          parse_mode: 'HTML', // FIXED: Use HTML
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.reply(reportsMessage, { 
+          parse_mode: 'HTML',
+          ...keyboard 
+        });
+      }
+
+    } catch (error) {
+      console.error('Detailed reports error:', error);
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery('❌ Error loading detailed reports');
+      } else {
+        await ctx.reply('❌ Error loading detailed reports');
+      }
+    }
+  }
+
+  // Bot toggle feature - FIXED: Use HTML formatting
   static async startToggleBot(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -978,24 +1001,27 @@ static async detailedReports(ctx) {
         step: 'awaiting_bot_id'
       });
 
-      const message = `🔄 *Toggle Bot Status*\n\n` +
+      // FIXED: Use HTML formatting
+      const message = 
+        `<b>🔄 Toggle Bot Status</b>\n\n` +
         `Please provide the bot ID or username to toggle:\n\n` +
-        `*Examples:*\n` +
-        `• 123 \\(Bot ID\\)\n` +
+        `<b>Examples:</b>\n` +
+        `• 123 (Bot ID)\n` +
         `• @botusername\n\n` +
-        `*Cancel:* Type /cancel`;
+        `<b>Cancel:</b> Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
         );
@@ -1011,7 +1037,7 @@ static async detailedReports(ctx) {
     }
   }
 
-  // Bot deletion feature
+  // Bot deletion feature - FIXED: Use HTML formatting
   static async startDeleteBot(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -1028,25 +1054,28 @@ static async detailedReports(ctx) {
         step: 'awaiting_bot_id'
       });
 
-      const message = `🗑️ *Delete Bot*\n\n` +
-        `⚠️ *Warning:* This will permanently delete the bot and all its data\\!\n\n` +
+      // FIXED: Use HTML formatting
+      const message = 
+        `<b>🗑️ Delete Bot</b>\n\n` +
+        `⚠️ <b>Warning:</b> This will permanently delete the bot and all its data!\n\n` +
         `Please provide the bot ID or username to delete:\n\n` +
-        `*Examples:*\n` +
-        `• 123 \\(Bot ID\\)\n` +
+        `<b>Examples:</b>\n` +
+        `• 123 (Bot ID)\n` +
         `• @botusername\n\n` +
-        `*Cancel:* Type /cancel`;
+        `<b>Cancel:</b> Type /cancel`;
 
       if (ctx.updateType === 'callback_query') {
         await ctx.editMessageText(message, {
-          parse_mode: 'MarkdownV2',
+          parse_mode: 'HTML', // FIXED: Use HTML
           ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
         });
         await ctx.answerCbQuery();
       } else {
-        await ctx.replyWithMarkdown(message, 
-          Markup.inlineKeyboard([
+        await ctx.reply(message, { 
+          parse_mode: 'HTML',
+          ...Markup.inlineKeyboard([
             [Markup.button.callback('🚫 Cancel', 'platform_bots')]
           ])
         );
@@ -1062,7 +1091,7 @@ static async detailedReports(ctx) {
     }
   }
 
-  // User export feature
+  // User export feature - FIXED: Use HTML formatting
   static async exportUsers(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -1100,11 +1129,12 @@ static async detailedReports(ctx) {
         source: Buffer.from(csvContent, 'utf8'),
         filename: `platform_users_${new Date().toISOString().split('T')[0]}.csv`
       }, {
-        caption: `📋 *User Export Complete*\n\n` +
-                `*Total Users:* ${formatNumber(users.length)}\n` +
-                `*Export Date:* ${new Date().toLocaleDateString()}\n\n` +
-                `The file contains all user data in CSV format\\.`,
-        parse_mode: 'MarkdownV2'
+        caption: 
+          `<b>📋 User Export Complete</b>\n\n` +
+          `<b>Total Users:</b> <code>${formatNumber(users.length)}</code>\n` +
+          `<b>Export Date:</b> <code>${new Date().toLocaleDateString()}</code>\n\n` +
+          `The file contains all user data in CSV format.`,
+        parse_mode: 'HTML' // FIXED: Use HTML
       });
 
       if (ctx.updateType === 'callback_query') {
@@ -1131,7 +1161,7 @@ static async detailedReports(ctx) {
 
       if (ctx.message.text === '/cancel') {
         platformAdminSessions.delete(userId);
-        await ctx.reply('❌ Platform admin action cancelled\\.', { parse_mode: 'MarkdownV2' });
+        await ctx.reply('❌ Platform admin action cancelled.');
         return;
       }
 
@@ -1151,12 +1181,12 @@ static async detailedReports(ctx) {
 
     } catch (error) {
       console.error('Platform admin input error:', error);
-      await ctx.reply('❌ Error processing platform admin action\\.', { parse_mode: 'MarkdownV2' });
+      await ctx.reply('❌ Error processing platform admin action.');
       platformAdminSessions.delete(ctx.from.id);
     }
   }
 
-  // Process user ban/unban action
+  // Process user ban/unban action - FIXED: Use HTML responses
   static async processUserBanAction(ctx, action, input) {
     try {
       let targetUserId;
@@ -1175,13 +1205,13 @@ static async detailedReports(ctx) {
       }
 
       if (!targetUser) {
-        await ctx.reply('❌ User not found\\. Please check the User ID or username\\.', { parse_mode: 'MarkdownV2' });
+        await ctx.reply('❌ User not found. Please check the User ID or username.');
         return;
       }
 
       if (action === 'ban_user') {
         if (targetUser.is_banned) {
-          await ctx.reply('❌ This user is already banned\\.', { parse_mode: 'MarkdownV2' });
+          await ctx.reply('❌ This user is already banned.');
           return;
         }
 
@@ -1202,14 +1232,11 @@ static async detailedReports(ctx) {
           }
         }
 
-        const escapedUsername = targetUser.username ? this.escapeMarkdown(targetUser.username) : targetUser.telegram_id;
-        await ctx.reply(`✅ User @${escapedUsername} has been banned and all their bots have been deactivated\\.`, {
-          parse_mode: 'MarkdownV2'
-        });
+        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been banned and all their bots have been deactivated.`);
 
       } else if (action === 'unban_user') {
         if (!targetUser.is_banned) {
-          await ctx.reply('❌ This user is not banned\\.', { parse_mode: 'MarkdownV2' });
+          await ctx.reply('❌ This user is not banned.');
           return;
         }
 
@@ -1230,10 +1257,7 @@ static async detailedReports(ctx) {
           }
         }
 
-        const escapedUsername = targetUser.username ? this.escapeMarkdown(targetUser.username) : targetUser.telegram_id;
-        await ctx.reply(`✅ User @${escapedUsername} has been unbanned and their bots have been reactivated\\.`, {
-          parse_mode: 'MarkdownV2'
-        });
+        await ctx.reply(`✅ User @${targetUser.username || targetUser.telegram_id} has been unbanned and their bots have been reactivated.`);
       }
 
       // Return to ban management
@@ -1241,11 +1265,11 @@ static async detailedReports(ctx) {
 
     } catch (error) {
       console.error('Process user ban action error:', error);
-      await ctx.reply('❌ Error processing ban action\\.', { parse_mode: 'MarkdownV2' });
+      await ctx.reply('❌ Error processing ban action.');
     }
   }
 
-  // Process bot toggle - FIXED: Proper reactivation
+  // Process bot toggle - FIXED: Use HTML responses
   static async processBotToggle(ctx, input) {
     try {
       let targetBot;
@@ -1260,7 +1284,7 @@ static async detailedReports(ctx) {
       }
 
       if (!targetBot) {
-        await ctx.reply('❌ Bot not found\\. Please check the Bot ID or username\\.', { parse_mode: 'MarkdownV2' });
+        await ctx.reply('❌ Bot not found. Please check the Bot ID or username.');
         return;
       }
 
@@ -1272,24 +1296,13 @@ static async detailedReports(ctx) {
           const success = await MiniBotManager.initializeBot(targetBot);
           if (success) {
             await targetBot.update({ is_active: true });
-            
-            // FIXED: Escape bot name for response
-            const escapedBotName = this.escapeMarkdown(targetBot.bot_name);
-            const escapedBotUsername = this.escapeMarkdown(targetBot.bot_username);
-            
-            await ctx.reply(`✅ Bot "${escapedBotName}" \\(@${escapedBotUsername}\\) has been activated\\.`, {
-              parse_mode: 'MarkdownV2'
-            });
+            await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been activated.`);
           } else {
-            await ctx.reply(`❌ Failed to activate bot: Initialization failed\\. Check bot token\\.`, {
-              parse_mode: 'MarkdownV2'
-            });
+            await ctx.reply('❌ Failed to activate bot: Initialization failed. Check bot token.');
             return;
           }
         } catch (error) {
-          await ctx.reply(`❌ Failed to activate bot: ${this.escapeMarkdown(error.message)}`, {
-            parse_mode: 'MarkdownV2'
-          });
+          await ctx.reply(`❌ Failed to activate bot: ${error.message}`);
           return;
         }
       } else {
@@ -1297,18 +1310,9 @@ static async detailedReports(ctx) {
         try {
           await MiniBotManager.stopBot(targetBot.id);
           await targetBot.update({ is_active: false });
-          
-          // FIXED: Escape bot name for response
-          const escapedBotName = this.escapeMarkdown(targetBot.bot_name);
-          const escapedBotUsername = this.escapeMarkdown(targetBot.bot_username);
-          
-          await ctx.reply(`✅ Bot "${escapedBotName}" \\(@${escapedBotUsername}\\) has been deactivated\\.`, {
-            parse_mode: 'MarkdownV2'
-          });
+          await ctx.reply(`✅ Bot "${targetBot.bot_name}" (@${targetBot.bot_username}) has been deactivated.`);
         } catch (error) {
-          await ctx.reply(`❌ Failed to deactivate bot: ${this.escapeMarkdown(error.message)}`, {
-            parse_mode: 'MarkdownV2'
-          });
+          await ctx.reply(`❌ Failed to deactivate bot: ${error.message}`);
           return;
         }
       }
@@ -1318,13 +1322,11 @@ static async detailedReports(ctx) {
 
     } catch (error) {
       console.error('Process bot toggle error:', error);
-      await ctx.reply('❌ Error toggling bot status\\.', {
-        parse_mode: 'MarkdownV2'
-      });
+      await ctx.reply('❌ Error toggling bot status.');
     }
   }
 
-  // Process bot deletion - FIXED: Foreign key constraint handling
+  // Process bot deletion - FIXED: Use HTML responses
   static async processBotDeletion(ctx, input) {
     try {
       let targetBot;
@@ -1339,7 +1341,7 @@ static async detailedReports(ctx) {
       }
 
       if (!targetBot) {
-        await ctx.reply('❌ Bot not found\\. Please check the Bot ID or username\\.', { parse_mode: 'MarkdownV2' });
+        await ctx.reply('❌ Bot not found. Please check the Bot ID or username.');
         return;
       }
 
@@ -1350,7 +1352,7 @@ static async detailedReports(ctx) {
         console.error('Error stopping bot during deletion:', error);
       }
 
-      // FIXED: Delete related records first to avoid foreign key constraints
+      // Delete related records first to avoid foreign key constraints
       console.log(`🗑️ Deleting related records for bot ${targetBot.id}...`);
       
       // Delete admins associated with this bot
@@ -1387,21 +1389,14 @@ static async detailedReports(ctx) {
       
       await targetBot.destroy();
 
-      const escapedBotName = this.escapeMarkdown(botName);
-      const escapedBotUsername = this.escapeMarkdown(botUsername);
-      
-      await ctx.reply(`✅ Bot "${escapedBotName}" \\(@${escapedBotUsername}\\) has been permanently deleted along with all its data\\.`, {
-        parse_mode: 'MarkdownV2'
-      });
+      await ctx.reply(`✅ Bot "${botName}" (@${botUsername}) has been permanently deleted along with all its data.`);
 
       // Return to bot management
       await this.botManagement(ctx);
 
     } catch (error) {
       console.error('Process bot deletion error:', error);
-      await ctx.reply(`❌ Error deleting bot: ${this.escapeMarkdown(error.message)}`, {
-        parse_mode: 'MarkdownV2'
-      });
+      await ctx.reply(`❌ Error deleting bot: ${error.message}`);
     }
   }
 
@@ -1474,7 +1469,7 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.startUnbanUser(ctx);
   });
 
-  // Analytics and stats - IMPLEMENTED FEATURES
+  // Analytics and stats
   bot.action('platform_user_stats', async (ctx) => {
     await PlatformAdminHandler.userStatistics(ctx);
   });
@@ -1483,7 +1478,7 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.detailedReports(ctx);
   });
 
-  // Bot management actions - IMPLEMENTED FEATURES
+  // Bot management actions
   bot.action('platform_toggle_bot', async (ctx) => {
     await PlatformAdminHandler.startToggleBot(ctx);
   });
@@ -1492,7 +1487,7 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.startDeleteBot(ctx);
   });
 
-  // Export features - IMPLEMENTED FEATURES
+  // Export features
   bot.action('platform_export_users', async (ctx) => {
     await PlatformAdminHandler.exportUsers(ctx);
   });
