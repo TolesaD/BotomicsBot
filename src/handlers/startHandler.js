@@ -1,4 +1,4 @@
-﻿const { Markup } = require('telegraf');
+const { Markup } = require('telegraf');
 const User = require('../models/User');
 
 const startHandler = async (ctx) => {
