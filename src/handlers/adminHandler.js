@@ -2,6 +2,7 @@
 const { Bot, Admin, User } = require('../models');
 const { checkAdminAccess, escapeMarkdown } = require('../utils/helpers');
 const { validateUserId, validateUsername } = require('../utils/validators');
+const config = require('../config/environment');
 
 // Store admin management sessions
 const adminSessions = new Map();
@@ -316,7 +317,7 @@ async function processAddAdmin(ctx, session, targetUserId, targetUsername) {
       const user = await User.findOne({ where: { username: targetUsername } });
       if (!user) {
         await ctx.reply(`❌ User @${targetUsername} not found in our system. ` +
-          `Ask them to start @MarCreatorBot first.`);
+          `Ask them to start @${config.BOT_USERNAME} first.`);
         return;
       }
       finalUserId = user.telegram_id;
@@ -344,7 +345,7 @@ async function processAddAdmin(ctx, session, targetUserId, targetUsername) {
     // Get target user info
     const targetUser = await User.findOne({ where: { telegram_id: finalUserId } });
     if (!targetUser) {
-      await ctx.reply('❌ User not found in our system. Ask them to start @MarCreatorBot first.');
+      await ctx.reply(`❌ User not found in our system. Ask them to start @${config.BOT_USERNAME} first.`);
       return;
     }
     
@@ -412,6 +413,7 @@ module.exports = {
   isInAdminSession,
   adminSessions 
 };
+
 // Register admin callbacks for main bot
 module.exports.registerAdminCallbacks = (bot) => {
   bot.action(/admins:(.+)/, async (ctx) => {

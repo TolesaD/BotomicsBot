@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../../database/db');
 
-const UserLog = sequelize.define('UserLog', {
+const ChannelJoin = sequelize.define('ChannelJoin', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -15,42 +15,43 @@ const UserLog = sequelize.define('UserLog', {
       key: 'id'
     }
   },
-  user_id: {
-    type: DataTypes.BIGINT,
-    allowNull: false
-  },
-  user_username: {
-    type: DataTypes.STRING,
-    allowNull: true
-  },
-  user_first_name: {
+  channel_id: {
     type: DataTypes.STRING,
     allowNull: false
   },
-  interaction_count: {
-    type: DataTypes.INTEGER,
-    defaultValue: 1
+  channel_username: {
+    type: DataTypes.STRING,
+    allowNull: false
   },
-  last_interaction: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
+  channel_title: {
+    type: DataTypes.STRING,
+    allowNull: false
   },
-  first_interaction: {
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  created_at: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
   }
 }, {
-  tableName: 'user_log',
+  tableName: 'channel_joins',
   timestamps: false,
   indexes: [
     {
-      unique: true,
-      fields: ['bot_id', 'user_id']
+      fields: ['bot_id']
     },
     {
-      fields: ['last_interaction']
+      fields: ['channel_id']
     }
   ]
 });
 
-module.exports = UserLog;
+// Association
+ChannelJoin.belongsTo(require('./Bot'), { 
+  foreignKey: 'bot_id', 
+  as: 'Bot' 
+});
+
+module.exports = ChannelJoin;

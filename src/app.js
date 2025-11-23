@@ -22,6 +22,11 @@ const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandl
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 
+// Import the missing handlers
+const BanHandler = require('./handlers/banHandler');
+const ChannelJoinHandler = require('./handlers/channelJoinHandler');
+const ReferralHandler = require('./handlers/referralHandler');
+
 class MetaBotCreator {
   constructor() {
     if (!config.BOT_TOKEN) {
@@ -43,9 +48,10 @@ class MetaBotCreator {
   setupHandlers() {
     console.log('🔄 Setting up bot handlers...');
     
-    // FIXED: Add ban check middleware for all users except platform admin
+    // FIXED: Proper middleware setup without nesting
     this.bot.use(async (ctx, next) => {
       ctx.isMainBot = true;
+      ctx.miniBotManager = this;
       
       // Skip ban check for platform admin
       if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
@@ -55,6 +61,26 @@ class MetaBotCreator {
       // Check if user is banned
       if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
         await ctx.reply('🚫 Your account has been banned from using this platform.');
+        return;
+      }
+      
+      return next();
+    });
+    
+    // Add session handling middleware
+    this.bot.use(async (ctx, next) => {
+      // Handle ban text input sessions
+      if (ctx.message?.text && await BanHandler.handleBanTextInput(ctx, ctx.message.text)) {
+        return;
+      }
+      
+      // Handle channel join text input sessions
+      if (ctx.message?.text && await ChannelJoinHandler.handleChannelTextInput(ctx, ctx.message.text)) {
+        return;
+      }
+
+      // Handle referral settings text input sessions
+      if (ctx.message?.text && await ReferralHandler.processReferralSettingChange(ctx, ctx.metaBotInfo?.mainBotId, ctx.message.text)) {
         return;
       }
       
@@ -188,7 +214,16 @@ class MetaBotCreator {
     this.setupCallbackHandlers();
     this.registerAdminCallbacks();
     
-    // Platform admin callbacks are now registered in setupCallbackHandlers FIRST
+    // Add the back_to_bot handler for referral system
+    this.bot.action('back_to_bot', async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+        await startHandler(ctx);
+      } catch (error) {
+        console.error('Back to bot error:', error);
+        await ctx.reply('Welcome back! How can I help you?');
+      }
+    });
     
     this.bot.catch((err, ctx) => {
       console.error('❌ Main bot error:', err);

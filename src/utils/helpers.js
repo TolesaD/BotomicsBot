@@ -178,10 +178,41 @@ function createOwnerPermissions() {
   };
 }
 
+/**
+ * Safe reply with markdown - automatically handles escaping
+ */
+async function safeReplyWithMarkdown(ctx, text, extra = {}) {
+  try {
+    const escapedText = escapeMarkdown(text);
+    return await ctx.replyWithMarkdown(escapedText, extra);
+  } catch (error) {
+    // Fallback to plain text if markdown fails
+    console.error('Markdown reply failed, falling back to plain text:', error.message);
+    return await ctx.reply(text, extra);
+  }
+}
+
+/**
+ * Safe edit message with markdown - automatically handles escaping
+ */
+async function safeEditMessageWithMarkdown(ctx, text, extra = {}) {
+  try {
+    const escapedText = escapeMarkdown(text);
+    return await ctx.editMessageText(escapedText, { 
+      parse_mode: 'Markdown',
+      ...extra 
+    });
+  } catch (error) {
+    // Fallback to plain text if markdown fails
+    console.error('Markdown edit failed, falling back to plain text:', error.message);
+    return await ctx.editMessageText(text, extra);
+  }
+}
+
 module.exports = {
   formatNumber,
   escapeMarkdown,
-  isValidToken, // Keep for basic format checks only
+  isValidToken,
   generateBotId,
   checkAdminAccess,
   getBotStats,
@@ -189,5 +220,7 @@ module.exports = {
   canPerformAction,
   sanitizeInput,
   createAdminPermissions,
-  createOwnerPermissions
+  createOwnerPermissions,
+  safeReplyWithMarkdown,
+  safeEditMessageWithMarkdown
 };

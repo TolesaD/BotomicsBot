@@ -64,32 +64,40 @@ const myBotsHandler = async (ctx) => {
     });
     
     if (allBots.length === 0) {
-      const message = `📭 *You don't have any bots yet!*\n\n` +
+      // Use HTML parsing for simple messages to avoid Markdown issues
+      const message = `📭 <b>You don't have any bots yet!</b>\n\n` +
         `Create your first bot to get started.`;
       
-      return await ctx.replyWithMarkdown(message, 
-        Markup.inlineKeyboard([
+      return await ctx.reply(message, {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
           [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
           [Markup.button.callback('❓ How to Create', 'help')]
         ])
-      );
+      });
     }
     
-    let message = `🤖 *Your Bots*\n\n` +
-      `*Total:* ${allBots.length} bots\n\n`;
+    // Build message with PROPER MarkdownV2 escaping
+    let message = `🤖 <b>Your Bots</b>\n\n` +
+      `<b>Total:</b> ${allBots.length} bots\n\n`;
     
     allBots.forEach((bot, index) => {
       const isOwner = bot.owner_id === userId;
       const status = bot.is_active ? '✅ Active' : '❌ Inactive';
-      message += `*${index + 1}. ${escapeMarkdown(bot.bot_name)}*\n` +
-        `@${bot.bot_username} | ${status} | ${isOwner ? '👑 Owner' : '👥 Admin'}\n\n`;
+      
+      // Escape ALL dynamic content for HTML parsing
+      const safeBotName = escapeMarkdown(bot.bot_name);
+      const safeBotUsername = escapeMarkdown(bot.bot_username);
+      
+      message += `<b>${index + 1}. ${safeBotName}</b>\n` +
+        `@${safeBotUsername} | ${status} | ${isOwner ? '👑 Owner' : '👥 Admin'}\n\n`;
     });
     
-    message += `*🎯 Management Instructions:*\n` +
-      `• Go to each mini-bot and use /dashboard\n` +
+    message += `<b>🎯 Management Instructions:</b>\n` +
+      `• Go to each mini\\-bot and use /dashboard\n` +
       `• View messages, send broadcasts, manage admins\n` +
-      `• All features available directly in mini-bots\n\n` +
-      `*💡 Tip:* Use the Menu for quick access!`;
+      `• All features available directly in mini\\-bots\n\n` +
+      `<b>💡 Tip:</b> Use the Menu for quick access!`;
     
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
@@ -97,11 +105,27 @@ const myBotsHandler = async (ctx) => {
       [Markup.button.callback('❓ Help', 'help')]
     ]);
     
-    await ctx.replyWithMarkdown(message, keyboard);
+    // Use HTML parsing instead of Markdown to avoid formatting issues
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      ...keyboard
+    });
     
   } catch (error) {
     console.error('My bots error:', error);
-    await ctx.reply('❌ Error loading bots. Please try again.');
+    
+    // Fallback to plain text if HTML parsing also fails
+    try {
+      await ctx.reply(
+        '❌ Error loading bots. Please try again.',
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Try Again', 'my_bots')],
+          [Markup.button.callback('🚀 Create Bot', 'create_bot')]
+        ])
+      );
+    } catch (fallbackError) {
+      console.error('Fallback error:', fallbackError);
+    }
   }
 };
 

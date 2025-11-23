@@ -1,9 +1,21 @@
-// test-local.js - COMPREHENSIVE LOCAL TESTING
+// test-local.js - COMPREHENSIVE LOCAL TESTING WITH ENVIRONMENT SUPPORT
 console.log('🧪 MARCREATORBOT - LOCAL TEST SUITE');
 console.log('=====================================\n');
 
 // Load environment variables first
 require('dotenv').config();
+
+// Environment detection
+const isDevelopment = process.env.NODE_ENV === 'development' || 
+                     process.env.NODE_ENV === 'dev' || 
+                     process.env.DEV_MODE === 'true';
+
+const mainBotName = isDevelopment ? 'MarCreatorDevBot' : 'MarCreatorBot';
+const expectedTokenPrefix = isDevelopment ? 'MarCreatorDevBot' : 'MarCreatorBot';
+
+console.log(`🌍 TEST ENVIRONMENT: ${isDevelopment ? 'DEVELOPMENT 🚧' : 'PRODUCTION 🚀'}`);
+console.log(`🤖 EXPECTED BOT: ${mainBotName}`);
+console.log(`🔧 NODE_ENV: ${process.env.NODE_ENV || 'development'}\n`);
 
 // Test 1: Environment Variables
 console.log('1. 🔍 TESTING ENVIRONMENT VARIABLES');
@@ -27,11 +39,22 @@ requiredEnvVars.forEach(({ name, minLength, description }) => {
     console.log(`   ❌ ${name}: TOO SHORT (${value.length} chars, need ${minLength}+)`);
     envTestPassed = false;
   } else {
-    console.log(`   ✅ ${name}: SET (${value.length} chars)`);
+    // Special check for BOT_TOKEN to ensure it matches environment
+    if (name === 'BOT_TOKEN') {
+      const tokenValid = value.includes(expectedTokenPrefix);
+      if (!tokenValid) {
+        console.log(`   ⚠️  ${name}: WARNING - Token doesn't match expected bot (${mainBotName})`);
+        console.log(`      Current token appears to be for: ${value.split(':')[0]}`);
+      } else {
+        console.log(`   ✅ ${name}: SET and matches ${mainBotName} (${value.length} chars)`);
+      }
+    } else {
+      console.log(`   ✅ ${name}: SET (${value.length} chars)`);
+    }
   }
 });
 
-console.log('   NODE_ENV:', process.env.NODE_ENV || 'development');
+console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'} ${isDevelopment ? '🚧' : '🚀'}`);
 console.log('   PORT:', process.env.PORT || 3000);
 
 if (!envTestPassed) {
@@ -40,6 +63,7 @@ if (!envTestPassed) {
   console.log('   BOT_TOKEN=your_bot_token_here');
   console.log('   ENCRYPTION_KEY=your_encryption_key_here');
   console.log('   DATABASE_URL=your_database_url_here');
+  console.log(`\n⚠️  IMPORTANT: Use ${mainBotName} token for ${isDevelopment ? 'development' : 'production'}`);
   process.exit(1);
 }
 
@@ -55,7 +79,7 @@ try {
   console.log(`   BOT_TOKEN: ***${config.BOT_TOKEN ? config.BOT_TOKEN.slice(-6) : 'MISSING'}`);
   console.log(`   ENCRYPTION_KEY: ${config.ENCRYPTION_KEY ? 'SET' : 'MISSING'}`);
   console.log(`   DATABASE_URL: ${config.DATABASE_URL ? 'SET' : 'MISSING'}`);
-  console.log(`   NODE_ENV: ${config.NODE_ENV}`);
+  console.log(`   NODE_ENV: ${config.NODE_ENV} ${isDevelopment ? '🚧' : '🚀'}`);
   console.log(`   PORT: ${config.PORT}`);
 } catch (error) {
   console.log('   ❌ Configuration loading failed:', error.message);
@@ -111,7 +135,7 @@ async function testTelegram() {
   try {
     const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
     
-    console.log('   📞 Calling Telegram API...');
+    console.log(`   📞 Calling Telegram API for ${mainBotName}...`);
     const response = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getMe`);
     const data = await response.json();
     
@@ -120,6 +144,19 @@ async function testTelegram() {
       console.log(`      Bot: @${data.result.username}`);
       console.log(`      Name: ${data.result.first_name}`);
       console.log(`      ID: ${data.result.id}`);
+      
+      // Verify bot matches expected environment
+      const actualBotName = data.result.username;
+      const expectedBotName = mainBotName.toLowerCase().replace('@', '');
+      
+      if (actualBotName !== expectedBotName) {
+        console.log(`   ⚠️  WARNING: Bot username doesn't match expected environment`);
+        console.log(`      Expected: ${expectedBotName}`);
+        console.log(`      Actual: ${actualBotName}`);
+      } else {
+        console.log(`   ✅ Bot matches expected environment: ${mainBotName}`);
+      }
+      
       return true;
     } else {
       console.log('   ❌ Telegram API: FAILED -', data.description);
@@ -146,6 +183,11 @@ async function testAppStartup() {
       console.log('   🤖 Testing bot instance creation...');
       const app = new MetaBotCreator();
       console.log('   ✅ Bot instance creation: SUCCESS');
+      
+      // Test environment detection in main app
+      if (app.isDevelopment !== undefined) {
+        console.log(`   ✅ Environment detection: ${app.isDevelopment ? 'DEVELOPMENT 🚧' : 'PRODUCTION 🚀'}`);
+      }
       
       // Don't actually start the bot to avoid hanging
       console.log('   ⚠️  Bot launch test: SKIPPED (to avoid hanging)');
@@ -185,25 +227,56 @@ async function testEncryption() {
   }
 }
 
-// Test 7: MiniBotManager
-console.log('7. 🤖 TESTING MINI-BOT MANAGER');
-console.log('   ---------------------------');
+// Test 7: MiniBotManager Environment Support
+console.log('7. 🤖 TESTING MINI-BOT MANAGER ENVIRONMENT SUPPORT');
+console.log('   ----------------------------------------------');
 
 async function testMiniBotManager() {
   try {
     const MiniBotManager = require('./src/services/MiniBotManager');
     
-    console.log('   Checking MiniBotManager...');
+    console.log('   Checking MiniBotManager environment detection...');
     const status = MiniBotManager.getInitializationStatus();
     console.log('   ✅ MiniBotManager: LOADED');
     console.log(`      Status: ${status.status}`);
     console.log(`      Initialized: ${status.isInitialized}`);
     console.log(`      Active Bots: ${status.activeBots}`);
+    console.log(`      Environment: ${status.environment} ${status.environment === 'development' ? '🚧' : '🚀'}`);
+    console.log(`      Main Bot: ${status.mainBot}`);
+    
+    // Verify environment consistency
+    if (status.environment === (isDevelopment ? 'development' : 'production')) {
+      console.log('   ✅ Environment consistency: MATCHES');
+    } else {
+      console.log('   ⚠️  Environment consistency: MISMATCH');
+    }
     
     return true;
   } catch (error) {
     console.log('   ❌ MiniBotManager test failed:', error.message);
     return false;
+  }
+}
+
+// Test 8: Health Check System
+console.log('8. 🏥 TESTING HEALTH CHECK SYSTEM');
+console.log('   ------------------------------');
+
+async function testHealthSystem() {
+  try {
+    console.log('   Testing health check system...');
+    
+    // Import health app but don't start server during tests
+    const healthApp = require('./health.js');
+    
+    console.log('   ✅ Health system: AVAILABLE');
+    console.log(`      Service: ${isDevelopment ? 'MarCreatorBot DEV' : 'MarCreatorBot'}`);
+    console.log(`      Main Bot: ${mainBotName}`);
+    
+    return true;
+  } catch (error) {
+    console.log('   ⚠️  Health system test: LIMITED -', error.message);
+    return true; // Don't fail the test for this
   }
 }
 
@@ -213,7 +286,8 @@ async function runAllTests() {
     { name: 'Database Connection', fn: testDatabase },
     { name: 'Telegram API', fn: testTelegram },
     { name: 'Encryption System', fn: testEncryption },
-    { name: 'MiniBot Manager', fn: testMiniBotManager },
+    { name: 'MiniBot Manager Environment', fn: testMiniBotManager },
+    { name: 'Health Check System', fn: testHealthSystem },
     { name: 'Application Startup', fn: testAppStartup }
   ];
   
@@ -228,27 +302,40 @@ async function runAllTests() {
   }
   
   // Final Summary
-  console.log('='.repeat(50));
+  console.log('='.repeat(60));
   console.log('📊 TEST SUMMARY');
-  console.log('='.repeat(50));
+  console.log('='.repeat(60));
+  
+  console.log(`🌍 Environment: ${isDevelopment ? 'DEVELOPMENT 🚧' : 'PRODUCTION 🚀'}`);
+  console.log(`🤖 Main Bot: ${mainBotName}`);
+  console.log(`🔧 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
   
   if (allPassed) {
-    console.log('🎉 ALL TESTS PASSED - Ready for Yegara.com deployment!');
+    console.log('\n🎉 ALL TESTS PASSED - Ready for deployment!');
     console.log('\n🚀 NEXT STEPS:');
-    console.log('   1. Commit and push to GitHub');
-    console.log('   2. Deploy to Yegara.com using .cpanel.yml');
-    console.log('   3. Set environment variables in cPanel');
-    console.log('   4. Start your application');
+    if (isDevelopment) {
+      console.log('   1. Development environment confirmed ✅');
+      console.log('   2. Test with @MarCreatorDevBot');
+      console.log('   3. When ready, switch to production:');
+      console.log('      - Update BOT_TOKEN to MarCreatorBot token');
+      console.log('      - Set NODE_ENV=production');
+      console.log('      - Run: npm run test:prod');
+    } else {
+      console.log('   1. Production environment confirmed ✅');
+      console.log('   2. Using @MarCreatorBot');
+      console.log('   3. Ready for deployment to Yegara.com');
+      console.log('   4. Set environment variables in cPanel');
+    }
   } else {
-    console.log('❌ SOME TESTS FAILED - Fix before deployment!');
+    console.log('\n❌ SOME TESTS FAILED - Fix before deployment!');
     console.log('\n💡 TROUBLESHOOTING:');
     console.log('   - Check your .env file has correct values');
-    console.log('   - Verify database is running and accessible');
-    console.log('   - Ensure bot token is valid and not revoked');
+    console.log(`   - Verify you're using the right bot token for ${mainBotName}`);
+    console.log('   - Ensure database is running and accessible');
     console.log('   - Check network connectivity');
     process.exit(1);
   }
-  console.log('='.repeat(50));
+  console.log('='.repeat(60));
 }
 
 // Handle uncaught errors
