@@ -180,105 +180,103 @@ class MiniBotManager {
   }
   
   async initializeBot(botRecord) {
-    try {
-      console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
-      
-      if (this.activeBots.has(botRecord.id)) {
-        console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
-        await this.stopBot(botRecord.id);
-      }
-      
-      console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
-      const token = botRecord.getDecryptedToken();
-      if (!token) {
-        console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
-        return false;
-      }
-      
-      if (!this.isValidBotToken(token)) {
-        console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
-        return false;
-      }
-      
-      console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
-      
-      const bot = new Telegraf(token, {
-        handlerTimeout: 120000,
-        telegram: { 
-          apiRoot: 'https://api.telegram.org',
-          agent: null
-        }
-      });
-      
-      const botRef = this.getBotReference(botRecord.bot_name);
-      
-      bot.context.metaBotInfo = {
-        mainBotId: botRecord.id,
-        botId: botRecord.bot_id,
-        botName: botRef.fullName,
-        botUsername: botRecord.bot_username,
-        botRecord: botRecord,
-        environment: this.isDevelopment ? 'development' : 'production',
-        mainBotRef: botRef
-      };
-      
-      this.setupHandlers(bot);
-      
-      await this.setBotCommands(bot, token);
-      
-      console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
-      
-      this.activeBots.set(botRecord.id, { 
-        instance: bot, 
-        record: botRecord,
-        token: token,
-        launchedAt: new Date(),
-        status: 'launching',
-        environment: this.isDevelopment ? 'development' : 'production'
-      });
-      
-      console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
-      
-      bot.launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query', 'my_chat_member']
-      }).then(() => {
-        console.log(`✅ Bot launch completed: ${botRecord.bot_name}`);
-        
-        const botData = this.activeBots.get(botRecord.id);
-        if (botData) {
-          botData.status = 'active';
-          botData.launchedAt = new Date();
-          console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
-        }
-        
-      }).catch(launchError => {
-        console.error(`❌ Bot launch failed for ${botRecord.bot_name}:`, launchError.message);
-        
-        console.log(`🔄 Trying alternative launch for ${botRecord.bot_name}...`);
-        try {
-          bot.startPolling();
-          console.log(`✅ Bot started with polling: ${botRecord.bot_name}`);
-          
-          const botData = this.activeBots.get(botRecord.id);
-          if (botData) {
-            botData.status = 'active';
-            console.log(`✅ Bot marked as ACTIVE after polling: ${botRecord.bot_name}`);
-          }
-        } catch (pollError) {
-          console.error(`❌ Alternative launch failed for ${botRecord.bot_name}:`, pollError.message);
-          this.activeBots.delete(botRecord.id);
-        }
-      });
-      
-      return true;
-      
-    } catch (error) {
-      console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
-      this.activeBots.delete(botRecord.id);
+  try {
+    console.log(`🔄 Starting initialization for: ${botRecord.bot_name} (DB ID: ${botRecord.id})`);
+    
+    if (this.activeBots.has(botRecord.id)) {
+      console.log(`⚠️ Bot ${botRecord.bot_name} (DB ID: ${botRecord.id}) is already active, stopping first...`);
+      await this.stopBot(botRecord.id);
+    }
+    
+    console.log(`🔐 Getting decrypted token for: ${botRecord.bot_name}`);
+    const token = botRecord.getDecryptedToken();
+    if (!token) {
+      console.error(`❌ No valid token for bot ${botRecord.bot_name}`);
       return false;
     }
+    
+    if (!this.isValidBotToken(token)) {
+      console.error(`❌ Invalid token format for bot ${botRecord.bot_name}`);
+      return false;
+    }
+    
+    console.log(`🔄 Creating Telegraf instance for: ${botRecord.bot_name}`);
+    
+    const bot = new Telegraf(token, {
+      handlerTimeout: 120000,
+      telegram: { 
+        apiRoot: 'https://api.telegram.org',
+        agent: null
+      }
+    });
+    
+    const botRef = this.getBotReference(botRecord.bot_name);
+    
+    bot.context.metaBotInfo = {
+      mainBotId: botRecord.id,
+      botId: botRecord.bot_id,
+      botName: botRef.fullName,
+      botUsername: botRecord.bot_username,
+      botRecord: botRecord,
+      environment: this.isDevelopment ? 'development' : 'production',
+      mainBotRef: botRef
+    };
+    
+    this.setupHandlers(bot);
+    
+    await this.setBotCommands(bot, token);
+    
+    console.log(`🚀 Launching bot: ${botRecord.bot_name}`);
+    
+    this.activeBots.set(botRecord.id, { 
+      instance: bot, 
+      record: botRecord,
+      token: token,
+      launchedAt: new Date(),
+      status: 'launching',
+      environment: this.isDevelopment ? 'development' : 'production'
+    });
+    
+    console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
+    
+    // 🔥 FIXED LAUNCH SECTION - Delete webhook first, then use polling
+    try {
+      // Delete any existing webhook first
+      await bot.telegram.deleteWebhook();
+      console.log(`✅ Webhook deleted for ${botRecord.bot_name}`);
+    } catch (webhookError) {
+      console.log(`ℹ️ No webhook to delete for ${botRecord.bot_name}`);
+    }
+    
+    // Use polling to avoid conflicts
+    await bot.startPolling({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query', 'my_chat_member']
+    });
+    
+    console.log(`✅ Bot ${botRecord.bot_name} started successfully with polling`);
+    
+    // Update bot status
+    const botData = this.activeBots.get(botRecord.id);
+    if (botData) {
+      botData.status = 'active';
+      botData.launchedAt = new Date();
+      console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
+    }
+    
+    return true;
+    
+  } catch (error) {
+    console.error(`❌ Failed to start bot ${botRecord.bot_name}:`, error.message);
+    
+    // Only remove from active bots on auth errors
+    if (error.code === 401 || error.message.includes('401') || error.message.includes('Unauthorized')) {
+      this.activeBots.delete(botRecord.id);
+    }
+    
+    return false;
   }
+}
 
   isValidBotToken(token) {
     if (!token || typeof token !== 'string') {
