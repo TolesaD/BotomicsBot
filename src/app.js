@@ -1,4 +1,4 @@
-﻿// src/app.js - COMPLETE VERSION WITH WEBHOOK SUPPORT
+﻿// src/app.js - COMPLETE VERSION WITH FIXED IMPORTS
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -14,8 +14,10 @@ if (isCpanel) {
 
 const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
-const config = require('../config/environment');
-const { connectDB } = require('../database/db');
+
+// FIXED: Use relative paths for imports
+const config = require('./config/environment'); // Changed from '../config/environment'
+const { connectDB } = require('./database/db'); // Changed from '../database/db'
 const MiniBotManager = require('./services/MiniBotManager');
 
 const { startHandler, helpHandler, featuresHandler } = require('./handlers/startHandler');
@@ -34,13 +36,17 @@ const PORT = process.env.PORT || 3000;
 
 class MetaBotCreator {
   constructor() {
-    if (!config.BOT_TOKEN) {
-      console.error('❌ BOT_TOKEN is not set');
+    // Get bot token from environment or config
+    const BOT_TOKEN = process.env.BOT_TOKEN || (config && config.BOT_TOKEN);
+    
+    if (!BOT_TOKEN) {
+      console.error('❌ BOT_TOKEN is not set in environment variables or config');
+      console.log('💡 Please set BOT_TOKEN environment variable');
       process.exit(1);
     }
     
-    console.log(`🤖 Creating bot instance with token: ${config.BOT_TOKEN.substring(0, 10)}...`);
-    this.bot = new Telegraf(config.BOT_TOKEN, {
+    console.log(`🤖 Creating bot instance with token: ${BOT_TOKEN.substring(0, 10)}...`);
+    this.bot = new Telegraf(BOT_TOKEN, {
       handlerTimeout: 90000,
       telegram: {
         apiRoot: 'https://api.telegram.org',
@@ -76,7 +82,7 @@ class MetaBotCreator {
     expressApp.get('/webhook/health', (req, res) => {
       res.json({ 
         status: 'ok', 
-        miniBots: MiniBotManager.activeBots.size,
+        miniBots: MiniBotManager.activeBots ? MiniBotManager.activeBots.size : 0,
         environment: process.env.NODE_ENV || 'production',
         timestamp: new Date().toISOString()
       });
@@ -154,20 +160,29 @@ class MetaBotCreator {
     this.bot.command('debug_minibots', async (ctx) => {
       try {
         await ctx.reply('🔄 Debugging mini-bots...');
-        const status = MiniBotManager.getInitializationStatus();
+        const status = MiniBotManager.getInitializationStatus ? MiniBotManager.getInitializationStatus() : { status: 'Unknown', isInitialized: false, activeBots: 0 };
         let message = `🔍 *Mini-bot Debug Info*\n\n`;
         message += `*Status:* ${status.status}\n`;
         message += `*Initialized:* ${status.isInitialized ? 'Yes' : 'No'}\n`;
         message += `*Active Bots:* ${status.activeBots}\n`;
         
-        const { Bot } = require('./models');
-        const activeBots = await Bot.findAll({ where: { is_active: true } });
-        message += `*Database Active Bots:* ${activeBots.length}\n`;
+        try {
+          const { Bot } = require('./models');
+          const activeBots = await Bot.findAll({ where: { is_active: true } });
+          message += `*Database Active Bots:* ${activeBots.length}\n`;
+        } catch (dbError) {
+          message += `*Database Active Bots:* Error accessing\n`;
+        }
         
         await ctx.replyWithMarkdown(message);
-        await ctx.reply('🔄 Forcing mini-bot reinitialization...');
-        const result = await MiniBotManager.forceReinitializeAllBots();
-        await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
+        
+        if (MiniBotManager.forceReinitializeAllBots) {
+          await ctx.reply('🔄 Forcing mini-bot reinitialization...');
+          const result = await MiniBotManager.forceReinitializeAllBots();
+          await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
+        } else {
+          await ctx.reply('❌ Mini-bot manager not fully initialized');
+        }
       } catch (error) {
         console.error('Debug command error:', error);
         await ctx.reply('❌ Debug command failed.');
@@ -178,33 +193,39 @@ class MetaBotCreator {
       try {
         await ctx.reply('🧪 Testing mini-bot communication...');
         
-        MiniBotManager.debugActiveBots();
-        
-        const { Bot } = require('./models');
-        const activeBots = await Bot.findAll({ where: { is_active: true } });
-        
-        if (activeBots.length === 0) {
-          await ctx.reply('❌ No active bots found in database.');
-          return;
+        if (MiniBotManager.debugActiveBots) {
+          MiniBotManager.debugActiveBots();
         }
         
-        let testResults = `🧪 *Mini-bot Test Results*\n\n`;
-        
-        for (const botRecord of activeBots) {
-          const botData = MiniBotManager.activeBots.get(botRecord.id);
-          if (botData) {
-            try {
-              const botInfo = await botData.instance.telegram.getMe();
-              testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
-            } catch (error) {
-              testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
-            }
-          } else {
-            testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
+        try {
+          const { Bot } = require('./models');
+          const activeBots = await Bot.findAll({ where: { is_active: true } });
+          
+          if (activeBots.length === 0) {
+            await ctx.reply('❌ No active bots found in database.');
+            return;
           }
+          
+          let testResults = `🧪 *Mini-bot Test Results*\n\n`;
+          
+          for (const botRecord of activeBots) {
+            const botData = MiniBotManager.activeBots ? MiniBotManager.activeBots.get(botRecord.id) : null;
+            if (botData) {
+              try {
+                const botInfo = await botData.instance.telegram.getMe();
+                testResults += `✅ ${botRecord.bot_name} (@${botInfo.username}) - ACTIVE\n`;
+              } catch (error) {
+                testResults += `❌ ${botRecord.bot_name} - ERROR: ${error.message}\n`;
+              }
+            } else {
+              testResults += `❌ ${botRecord.bot_name} - NOT IN MEMORY\n`;
+            }
+          }
+          
+          await ctx.replyWithMarkdown(testResults);
+        } catch (dbError) {
+          await ctx.reply('❌ Error accessing database for test');
         }
-        
-        await ctx.replyWithMarkdown(testResults);
         
       } catch (error) {
         console.error('Test command error:', error);
@@ -348,12 +369,6 @@ class MetaBotCreator {
       await ctx.reply('👥 Admin management is available in your mini-bots. Use /admins command there.');
     });
     
-    // REMOVED the catch-all handler that was causing platform admin buttons to redirect to start
-    // this.bot.action(/.+/, async (ctx) => {
-    //   await ctx.answerCbQuery();
-    //   await startHandler(ctx);
-    // });
-    
     console.log('✅ Main bot callback handlers setup complete');
   }
   
@@ -375,7 +390,7 @@ class MetaBotCreator {
         `• Database connections use SSL/TLS\n` +
         `• Regular security updates\n\n` +
         `*Contact:*\n` +
-        `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
+        `Questions? Contact @MarCreatorSupportBot\n\n` +
         `By using this service, you agree to our privacy practices.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -396,7 +411,7 @@ class MetaBotCreator {
       await ctx.reply(
         `🔒 Privacy Policy\n\n` +
         `We protect your data. We collect only necessary information to provide the service.\n\n` +
-        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'} for concerns.`,
+        `Contact @MarCreatorSupportBot for concerns.`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🔙 Main Menu', 'start')]
         ])
@@ -441,7 +456,7 @@ class MetaBotCreator {
         `*Changes to Terms:*\n` +
         `We may update these terms with reasonable notice.\n\n` +
         `*Contact:*\n` +
-        `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n` +
+        `Questions? Contact @MarCreatorSupportBot\n\n` +
         `By using this service, you agree to these terms.`;
 
       const keyboard = Markup.inlineKeyboard([
@@ -462,7 +477,7 @@ class MetaBotCreator {
       await ctx.reply(
         `📋 Terms of Service\n\n` +
         `By using this service, you agree to use it responsibly and follow Telegram's rules.\n\n` +
-        `Contact @${config.SUPPORT_USERNAME || 'MarCreatorBotSupport'} for questions.`,
+        `Contact @MarCreatorSupportBot for questions.`,
         Markup.inlineKeyboard([
           [Markup.button.callback('🔙 Main Menu', 'start')]
         ])
@@ -593,18 +608,21 @@ class MetaBotCreator {
       console.log('✅ Main bot stopped');
     }
     
-    const activeBots = Array.from(MiniBotManager.activeBots.keys());
-    console.log(`🔄 Stopping ${activeBots.length} mini-bots...`);
-    
-    for (const botId of activeBots) {
-      try {
-        await MiniBotManager.stopBot(botId);
-      } catch (error) {
-        console.error(`❌ Failed to stop mini-bot ${botId}:`, error);
+    if (MiniBotManager.activeBots) {
+      const activeBots = Array.from(MiniBotManager.activeBots.keys());
+      console.log(`🔄 Stopping ${activeBots.length} mini-bots...`);
+      
+      for (const botId of activeBots) {
+        try {
+          await MiniBotManager.stopBot(botId);
+        } catch (error) {
+          console.error(`❌ Failed to stop mini-bot ${botId}:`, error);
+        }
       }
+      
+      MiniBotManager.activeBots.clear();
     }
     
-    MiniBotManager.activeBots.clear();
     console.log('👋 All bots stopped');
     process.exit(0);
   }
