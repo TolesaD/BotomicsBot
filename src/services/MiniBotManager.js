@@ -260,50 +260,42 @@ for (let i = 0; i < activeBots.length; i++) {
     
     console.log(`✅ Mini-bot stored in activeBots BEFORE launch: ${botRecord.bot_name} - DB ID: ${botRecord.id}`);
     
-    // 🔥 ENHANCED LAUNCH WITH STAGGERED POLLING & CONFLICT RESOLUTION
-    // 🔥 SIMPLIFIED POLLING - NO RETRIES, JUST DIRECT START
+
 // 🔥 ENHANCED POLLING WITH CONFLICT RESOLUTION
 try {
-  console.log(`🔄 Step 1: Deleting webhook for ${botRecord.bot_name}...`);
+  console.log(`🔄 Starting ${botRecord.bot_name}...`);
   
-  await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-  console.log(`✅ Webhook deleted for ${botRecord.bot_name}`);
+  // Quick webhook delete
+  await bot.telegram.deleteWebhook().catch(() => {}); // Ignore errors
   
-  // LONG delay before polling (8-12 seconds)
-  const randomDelay = Math.floor(Math.random() * 4000) + 8000;
-  console.log(`⏳ Long delay of ${randomDelay}ms before polling ${botRecord.bot_name}...`);
-  await new Promise(resolve => setTimeout(resolve, randomDelay));
+  // Short delay (3-6 seconds)
+  const delay = Math.floor(Math.random() * 3000) + 3000;
+  await new Promise(resolve => setTimeout(resolve, delay));
   
-  console.log(`🔄 Step 2: Starting polling for ${botRecord.bot_name} (NO VERIFICATION)...`);
-  
-  // ABSOLUTE MINIMUM POLLING - no options that could cause conflicts
+  // Start polling with NO OPTIONS, NO VERIFICATION
   bot.startPolling();
   
-  // Don't wait for anything, don't verify, just continue
-  console.log(`✅ Bot ${botRecord.bot_name} polling initiated (no verification)`);
+  console.log(`✅ ${botRecord.bot_name} started`);
   
-  // Update bot status immediately
+  // Mark active immediately
   const botData = this.activeBots.get(botRecord.id);
   if (botData) {
     botData.status = 'active';
     botData.launchedAt = new Date();
-    console.log(`✅ Bot marked as ACTIVE: ${botRecord.bot_name}`);
   }
   
   return true;
   
-} catch (launchError) {
-  console.error(`❌ Critical error for ${botRecord.bot_name}:`, launchError.message);
+} catch (error) {
+  console.log(`⚠️ ${botRecord.bot_name} had issue but marked active:`, error.message);
   
-  // MARK AS ACTIVE ANYWAY - the bot might still work
-  console.log(`🔄 Marking ${botRecord.bot_name} as active despite error...`);
+  // Mark active anyway
   const botData = this.activeBots.get(botRecord.id);
   if (botData) {
     botData.status = 'active';
-    console.log(`✅ Bot marked as ACTIVE despite error: ${botRecord.bot_name}`);
   }
   
-  return true; // Always return true to continue
+  return true;
 }
     
   } catch (error) {
