@@ -82,7 +82,7 @@ async _initializeAllBots() {
     await this.clearAllBots();
     
     console.log('⏳ Waiting for database to be fully ready...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     const activeBots = await Bot.findAll({ where: { is_active: true } });
     
@@ -97,55 +97,68 @@ async _initializeAllBots() {
     let successCount = 0;
     let failedCount = 0;
     
-    console.log(`🚀 INITIALIZING BOTS SEQUENTIALLY WITH 10s DELAYS`);
+    // Process bots in small batches with minimal delays
+    const BATCH_SIZE = 5; // Increased to 5 bots per batch
+    const BATCH_DELAY = 3000; // Only 3 seconds between batches
     
-    // Process bots ONE AT A TIME with significant delays
-    for (let i = 0; i < activeBots.length; i++) {
-      const botRecord = activeBots[i];
+    console.log(`🚀 INITIALIZING ${activeBots.length} BOTS IN BATCHES OF ${BATCH_SIZE}`);
+    
+    for (let i = 0; i < activeBots.length; i += BATCH_SIZE) {
+      const batch = activeBots.slice(i, i + BATCH_SIZE);
+      const batchNumber = Math.floor(i/BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(activeBots.length/BATCH_SIZE);
       
-      try {
-        console.log(`\n🔄 [${i+1}/${activeBots.length}] Attempting to initialize: ${botRecord.bot_name} (ID: ${botRecord.id})`);
+      console.log(`\n🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} bots)...`);
+      
+      // Process batch concurrently but with individual delays
+      const batchResults = [];
+      for (let j = 0; j < batch.length; j++) {
+        const botRecord = batch[j];
+        const positionInBatch = j + 1;
         
-        const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
-        if (owner && owner.is_banned) {
-          console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
-          await botRecord.update({ is_active: false });
+        try {
+          console.log(`\n🔄 [Batch ${batchNumber}.${positionInBatch}] Initializing: ${botRecord.bot_name}`);
+          
+          const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
+          if (owner && owner.is_banned) {
+            console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
+            await botRecord.update({ is_active: false });
+            failedCount++;
+            continue;
+          }
+          
+          const success = await this.initializeBotWithEncryptionCheck(botRecord);
+          
+          if (success) {
+            successCount++;
+            console.log(`✅ SUCCESS: ${botRecord.bot_name}`);
+          } else {
+            failedCount++;
+            console.error(`❌ FAILED: ${botRecord.bot_name}`);
+          }
+          
+          // Very short delay between bots in same batch (1 second)
+          if (j < batch.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          
+        } catch (error) {
+          console.error(`💥 Error initializing ${botRecord.bot_name}:`, error.message);
           failedCount++;
-          continue;
         }
-        
-        const success = await this.initializeBotWithEncryptionCheck(botRecord);
-        
-        if (success) {
-          successCount++;
-          console.log(`✅ Initialization SUCCESS: ${botRecord.bot_name}`);
-        } else {
-          failedCount++;
-          console.error(`❌ Initialization FAILED: ${botRecord.bot_name}`);
-        }
-        
-        // Wait 10 seconds between each bot initialization
-        if (i < activeBots.length - 1) {
-          console.log(`⏳ Waiting 10 seconds before next bot...`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
-        }
-        
-      } catch (error) {
-        console.error(`💥 Critical error initializing bot ${botRecord.bot_name}:`, error.message);
-        failedCount++;
-        console.log(`🔄 Continuing with next bot despite error...`);
-        
-        // Wait even on error before continuing
-        if (i < activeBots.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 10000));
-        }
+      }
+      
+      // Wait between batches (only 3 seconds)
+      if (i + BATCH_SIZE < activeBots.length) {
+        console.log(`⏳ Waiting 3s before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
       }
     }
     
-    console.log(`\n🎉 INITIALIZATION SUMMARY: ${successCount}/${activeBots.length} mini-bots initialization started (${failedCount} failed)`);
+    console.log(`\n🎉 INITIALIZATION COMPLETE: ${successCount}/${activeBots.length} successful (${failedCount} failed)`);
     
-    console.log('⏳ Waiting for bots to complete launch...');
-    await new Promise(resolve => setTimeout(resolve, 15000));
+    // Quick final wait
+    await new Promise(resolve => setTimeout(resolve, 5000));
     
     this.isInitialized = true;
     this.debugActiveBots();
