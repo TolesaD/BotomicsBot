@@ -1,4 +1,4 @@
-﻿// src/app.js - COMPLETE VERSION WITH FIXES
+﻿// src/app.js - COMPLETE VERSION WITH WEBHOOK SUPPORT
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
@@ -13,6 +13,7 @@ if (isCpanel) {
 }
 
 const { Telegraf, Markup } = require('telegraf');
+const express = require('express');
 const config = require('../config/environment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
@@ -26,6 +27,10 @@ const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 const BanHandler = require('./handlers/banHandler');
 const ChannelJoinHandler = require('./handlers/channelJoinHandler');
 const ReferralHandler = require('./handlers/referralHandler');
+
+// Create Express app for webhooks
+const expressApp = express();
+const PORT = process.env.PORT || 3000;
 
 class MetaBotCreator {
   constructor() {
@@ -42,7 +47,51 @@ class MetaBotCreator {
         agent: null
       }
     });
+    
+    this.setupExpressWebhooks();
     this.setupHandlers();
+  }
+  
+  setupExpressWebhooks() {
+    console.log('🌐 Setting up Express webhooks for mini-bots...');
+    
+    // Middleware
+    expressApp.use(express.json());
+
+    // Webhook endpoint for mini-bots
+    expressApp.post('/webhook/mini/:botId', async (req, res) => {
+      try {
+        const { botId } = req.params;
+        console.log(`📨 Webhook received for mini-bot ID: ${botId}`);
+        
+        await MiniBotManager.handleMiniBotWebhook({ request: req, response: res }, null, botId);
+        
+      } catch (error) {
+        console.error('Webhook processing error:', error);
+        res.status(500).json({ error: 'Error processing webhook' });
+      }
+    });
+
+    // Health check endpoint
+    expressApp.get('/webhook/health', (req, res) => {
+      res.json({ 
+        status: 'ok', 
+        miniBots: MiniBotManager.activeBots.size,
+        environment: process.env.NODE_ENV || 'production',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Root endpoint
+    expressApp.get('/', (req, res) => {
+      res.json({ 
+        message: 'MarCreator Bot Server is running',
+        status: 'active',
+        timestamp: new Date().toISOString()
+      });
+    });
+    
+    console.log('✅ Express webhooks setup complete');
   }
   
   setupHandlers() {
@@ -487,46 +536,27 @@ class MetaBotCreator {
   }
   
   start() {
-    console.log('🚀 Starting main bot FIRST...');
+    console.log('🚀 Starting main bot with webhook support...');
     
-    // CRITICAL: Start mini-bots BEFORE main bot to ensure they run
-    console.log('🔄 AUTOMATIC: Starting mini-bots initialization IMMEDIATELY...');
-    this.startMiniBotsAutomatically().then(result => {
-      if (result > 0) {
-        console.log(`✅ ${result} mini-bots started BEFORE main bot`);
-      }
+    // Start Express server for webhooks FIRST
+    console.log('🌐 Starting Express server for webhooks...');
+    expressApp.listen(PORT, () => {
+      console.log(`🚀 Express server running on port ${PORT}`);
+      console.log(`🔗 Webhook URL: https://testweb.maroset.com/webhook/mini/{botId}`);
+      console.log(`❤️  Health check: https://testweb.maroset.com/webhook/health`);
     });
 
-    const express = require('express');
-const app = express();
-
-// Add this after your other middleware but BEFORE bot startup
-app.use(express.json());
-
-// Webhook endpoint for mini-bots
-app.post('/webhook/mini/:botId', async (req, res) => {
-  try {
-    const { botId } = req.params;
-    console.log(`📨 Webhook received for mini-bot ID: ${botId}`);
+    // CRITICAL: Start mini-bots AFTER Express server is ready
+    setTimeout(() => {
+      console.log('🔄 AUTOMATIC: Starting mini-bots initialization IMMEDIATELY...');
+      this.startMiniBotsAutomatically().then(result => {
+        if (result > 0) {
+          console.log(`✅ ${result} mini-bots started with webhooks`);
+        }
+      });
+    }, 2000);
     
-    await miniBotManager.handleMiniBotWebhook({ request: req, response: res }, null, botId);
-    
-  } catch (error) {
-    console.error('Webhook processing error:', error);
-    res.status(500).send('Error processing webhook');
-  }
-});
-
-// Health check for webhooks
-app.get('/webhook/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    miniBots: miniBotManager.activeBots.size,
-    environment: process.env.NODE_ENV || 'production'
-  });
-});
-    
-    // Start main bot
+    // Start main bot with polling (only one bot uses polling)
     this.bot.launch({
       dropPendingUpdates: true,
       allowedUpdates: ['message', 'callback_query']
@@ -535,13 +565,14 @@ app.get('/webhook/health', (req, res) => {
         console.log('🎉 MetaBot Creator MAIN BOT is now RUNNING!');
         console.log('========================================');
         console.log('📱 Main Bot: Manages bot creation');
-        console.log('🤖 Mini-bots: Handle user messages');
+        console.log('🤖 Mini-bots: Handle user messages via webhooks');
         console.log('💬 Send /start to see main menu');
         console.log('🔧 Use /createbot to create new bots');
         console.log('📋 Use /mybots to view your bots');
         console.log('👑 Use /platform for admin dashboard');
         console.log('🔄 Use /reinit to restart mini-bots');
         console.log('🔒 Legal: /privacy & /terms available');
+        console.log('🌐 Webhooks: Active for mini-bots');
         console.log('========================================');
         
       })
@@ -584,6 +615,7 @@ async function startApplication() {
   try {
     console.log('🔧 Starting MetaBot Creator application...');
     console.log('🚀 Optimized for Yegara.com cPanel deployment');
+    console.log('🌐 Webhook support enabled for mini-bots');
     
     const app = new MetaBotCreator();
     await app.initialize();
@@ -599,14 +631,5 @@ async function startApplication() {
 if (require.main === module) {
   startApplication();
 }
-
-// In your app.js, after all setup
-const PORT = process.env.PORT || 3000;
-
-// Start Express server for webhooks
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Webhook endpoints available at: https://testweb.maroset.com/webhook/`);
-});
 
 module.exports = MetaBotCreator;
