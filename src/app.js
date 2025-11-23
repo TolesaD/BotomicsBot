@@ -27,6 +27,9 @@ const BanHandler = require('./handlers/banHandler');
 const ChannelJoinHandler = require('./handlers/channelJoinHandler');
 const ReferralHandler = require('./handlers/referralHandler');
 
+// ⭐ ADD THIS LINE (You forgot it)
+const express = require("express");
+
 // Create Express app for webhooks
 const expressApp = express();
 const PORT = process.env.PORT || 3000;
