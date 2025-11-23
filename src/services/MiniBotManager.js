@@ -77,19 +77,15 @@ class MiniBotManager {
   
 async _initializeAllBots() {
   try {
-    console.log(`🔄 CRITICAL: Starting mini-bot initialization on server startup (${this.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'})...`);
+    console.log(`🔄 CRITICAL: FAST initialization starting...`);
     
     await this.clearAllBots();
-    
-    console.log('⏳ Waiting for database to be fully ready...');
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     const activeBots = await Bot.findAll({ where: { is_active: true } });
-    
-    console.log(`📊 Found ${activeBots.length} active bots in database to initialize`);
+    console.log(`📊 Found ${activeBots.length} active bots to initialize`);
     
     if (activeBots.length === 0) {
-      console.log('ℹ️ No active bots found in database - this is normal for new deployment');
       this.isInitialized = true;
       return 0;
     }
@@ -97,68 +93,44 @@ async _initializeAllBots() {
     let successCount = 0;
     let failedCount = 0;
     
-    // Process bots in small batches with minimal delays
-    const BATCH_SIZE = 5; // Increased to 5 bots per batch
-    const BATCH_DELAY = 3000; // Only 3 seconds between batches
+    console.log(`🚀 FAST INIT: Starting all ${activeBots.length} bots with 1s delays`);
     
-    console.log(`🚀 INITIALIZING ${activeBots.length} BOTS IN BATCHES OF ${BATCH_SIZE}`);
-    
-    for (let i = 0; i < activeBots.length; i += BATCH_SIZE) {
-      const batch = activeBots.slice(i, i + BATCH_SIZE);
-      const batchNumber = Math.floor(i/BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(activeBots.length/BATCH_SIZE);
+    for (let i = 0; i < activeBots.length; i++) {
+      const botRecord = activeBots[i];
       
-      console.log(`\n🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} bots)...`);
-      
-      // Process batch concurrently but with individual delays
-      const batchResults = [];
-      for (let j = 0; j < batch.length; j++) {
-        const botRecord = batch[j];
-        const positionInBatch = j + 1;
+      try {
+        console.log(`🔄 [${i+1}/${activeBots.length}] ${botRecord.bot_name}`);
         
-        try {
-          console.log(`\n🔄 [Batch ${batchNumber}.${positionInBatch}] Initializing: ${botRecord.bot_name}`);
-          
-          const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
-          if (owner && owner.is_banned) {
-            console.log(`🚫 Skipping bot ${botRecord.bot_name} - owner is banned`);
-            await botRecord.update({ is_active: false });
-            failedCount++;
-            continue;
-          }
-          
-          const success = await this.initializeBotWithEncryptionCheck(botRecord);
-          
-          if (success) {
-            successCount++;
-            console.log(`✅ SUCCESS: ${botRecord.bot_name}`);
-          } else {
-            failedCount++;
-            console.error(`❌ FAILED: ${botRecord.bot_name}`);
-          }
-          
-          // Very short delay between bots in same batch (1 second)
-          if (j < batch.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-          
-        } catch (error) {
-          console.error(`💥 Error initializing ${botRecord.bot_name}:`, error.message);
+        const owner = await User.findOne({ where: { telegram_id: botRecord.owner_id } });
+        if (owner && owner.is_banned) {
+          console.log(`🚫 Skipping banned owner bot: ${botRecord.bot_name}`);
+          await botRecord.update({ is_active: false });
           failedCount++;
+          continue;
         }
-      }
-      
-      // Wait between batches (only 3 seconds)
-      if (i + BATCH_SIZE < activeBots.length) {
-        console.log(`⏳ Waiting 3s before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        
+        const success = await this.initializeBotWithEncryptionCheck(botRecord);
+        
+        if (success) {
+          successCount++;
+          console.log(`✅ ${botRecord.bot_name}`);
+        } else {
+          failedCount++;
+          console.log(`❌ ${botRecord.bot_name}`);
+        }
+        
+        // Only 1 second delay between bots
+        if (i < activeBots.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+      } catch (error) {
+        console.error(`💥 ${botRecord.bot_name}:`, error.message);
+        failedCount++;
       }
     }
     
-    console.log(`\n🎉 INITIALIZATION COMPLETE: ${successCount}/${activeBots.length} successful (${failedCount} failed)`);
-    
-    // Quick final wait
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    console.log(`\n🎉 DONE: ${successCount}/${activeBots.length} successful`);
     
     this.isInitialized = true;
     this.debugActiveBots();
@@ -166,7 +138,7 @@ async _initializeAllBots() {
     return successCount;
     
   } catch (error) {
-    console.error('💥 CRITICAL: Error initializing all bots:', error);
+    console.error('💥 Initialization failed:', error);
     this.isInitialized = false;
     return 0;
   }
