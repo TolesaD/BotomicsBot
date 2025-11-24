@@ -5,7 +5,6 @@ const ReferralHandler = require('../handlers/referralHandler');
 
 // Import new feature handlers
 const ChannelJoinHandler = require('../handlers/channelJoinHandler');
-// const ReferralHandler = require('../handlers/referralHandler'); // REMOVE THIS DUPLICATE LINE
 const BanHandler = require('../handlers/banHandler');
 const channelVerificationMiddleware = require('../middleware/channelVerification');
 const banCheckMiddleware = require('../middleware/banCheck');
@@ -701,7 +700,7 @@ try {
         `*Quick Stats:*\n` +
         `📨 ${stats.pendingMessages} pending messages\n` +
         `👥 ${stats.totalUsers} total users\n` +
-        `💬 ${stats.totalMessages} total messages}\n\n` +
+        `💬 ${stats.totalMessages} total messages\n\n` +
         `*Quick Access:*\n` +
         `• Use commands from menu (/) button\n` +
         `• Or click buttons below`;
@@ -711,7 +710,7 @@ try {
         [Markup.button.callback('📊 Statistics', 'mini_stats')],
         [Markup.button.callback('👥 Manage Admins', 'mini_admins')],
         [Markup.button.callback('⚙️ Bot Settings', 'mini_settings')],
-        [Markup.button.callback('💰 Referral Program', `ref_dashboard_${metaBotInfo.mainBotId}`)],
+        // REMOVED: Referral Program button as requested
         [Markup.button.callback('🚫 Ban Management', `ban_management_${metaBotInfo.mainBotId}`)],
         [Markup.button.url('🚀 Create More Bots', `https://t.me/${botRef.username}`)]
       ]);
@@ -842,7 +841,7 @@ try {
         [Markup.button.callback('🔄 Reset Welcome Message', 'settings_reset_welcome')],
         [Markup.button.callback('📢 Channel Join Settings', 'settings_channels')],
         [Markup.button.callback('💰 Referral Program', 'settings_referral')],
-        [Markup.button.callback('🚫 Ban Management', 'settings_ban_management')],
+        // REMOVED: Ban Management button as requested (already in Bot Settings)
         [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
       ]);
       
@@ -1066,7 +1065,7 @@ handleTextMessage = async (ctx) => {
     // Check if this is a referral settings input
     if (ReferralHandler.hasActiveReferralSession(user.id, metaBotInfo.mainBotId)) {
       console.log('🔔 Processing referral setting input from user:', user.id);
-      const processed = await ReferralHandler.processWithdrawalTextInput(ctx, metaBotInfo.mainBotId, message);
+      const processed = await ReferralHandler.processReferralSettingChange(ctx, metaBotInfo.mainBotId, message);
       if (processed) {
         console.log('✅ Referral setting processed successfully');
         return; // Stop further processing - IMPORTANT!
@@ -1249,6 +1248,7 @@ handleTextMessage = async (ctx) => {
         message_type: 'text'
       });
       
+      // FIXED: Ensure message is actually sent to admins
       await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'text', ctx.message);
       
       const successMsg = await ctx.reply('✅ Your message has been received.');
@@ -2174,7 +2174,6 @@ handleTextMessage = async (ctx) => {
     console.log(`📊 Active bots: ${this.activeBots.size}`);
     console.log(`🏁 Initialized: ${this.isInitialized}`);
     console.log(`🔄 Initialization in progress: ${!!this.initializationPromise}`);
-    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
     console.log(`🌍 Environment: ${this.isDevelopment ? 'DEVELOPMENT 🚧' : 'PRODUCTION 🚀'}`);
     console.log(`🤖 Main Bot: @${this.mainBotUsername}`);
     
@@ -2184,7 +2183,6 @@ handleTextMessage = async (ctx) => {
       isHealthy: this.isInitialized && !this.initializationPromise,
       activeBots: this.activeBots.size,
       status: this.isInitialized ? 'READY' : 'INITIALIZING',
-      attempts: this.initializationAttempts,
       environment: this.isDevelopment ? 'development' : 'production',
       mainBot: this.mainBotUsername
     };
@@ -2204,7 +2202,6 @@ handleTextMessage = async (ctx) => {
     console.log('\n🐛 DEBUG: Active Bots Status');
     console.log(`📊 Total active bots: ${this.activeBots.size}`);
     console.log(`🏁 Initialization status: ${this.isInitialized ? 'COMPLETE' : 'PENDING'}`);
-    console.log(`🔄 Initialization attempts: ${this.initializationAttempts}`);
     console.log(`🌍 Environment: ${this.isDevelopment ? 'DEVELOPMENT 🚧' : 'PRODUCTION 🚀'}`);
     
     if (this.activeBots.size === 0) {
@@ -2218,7 +2215,6 @@ handleTextMessage = async (ctx) => {
 
   async forceReinitializeAllBots() {
     console.log('🔄 FORCE: Reinitializing all mini-bots...');
-    this.initializationAttempts = 0;
     this.isInitialized = false;
     return await this.initializeAllBots();
   }
@@ -2262,8 +2258,6 @@ handleTextMessage = async (ctx) => {
     return {
       isInitialized: this.isInitialized,
       activeBots: this.activeBots.size,
-      attempts: this.initializationAttempts,
-      maxAttempts: this.maxInitializationAttempts,
       status: this.isInitialized ? 'READY' : 'INITIALIZING',
       environment: this.isDevelopment ? 'development' : 'production',
       mainBot: this.mainBotUsername

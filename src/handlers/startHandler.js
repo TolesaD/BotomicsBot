@@ -115,7 +115,7 @@ const helpHandler = async (ctx) => {
       `/privacy - View Privacy Policy\n` +
       `/terms - View Terms of Service\n` +
       `*Contact:*\n` +
-      `Questions? Contact @${config.SUPPORT_USERNAME || 'MarCreatorSupportBot'}\n\n`;
+      `Questions? Contact @MarCreatorSupportBot\n\n`;
 
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.callback('🚀 Create Your First Bot', 'create_bot')],

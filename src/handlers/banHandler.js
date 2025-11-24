@@ -462,6 +462,7 @@ class BanHandler {
         }
       });
 
+      // FIXED: Clean ban management message without slashes and stars
       const message = `🚫 *User Ban Management*\n\n` +
         `*Currently Banned:* ${bannedUsers} users\n\n` +
         `*Available Actions:*\n` +
