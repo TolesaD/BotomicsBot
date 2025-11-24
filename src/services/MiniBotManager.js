@@ -5,7 +5,7 @@ const ReferralHandler = require('../handlers/referralHandler');
 
 // Import new feature handlers
 const ChannelJoinHandler = require('../handlers/channelJoinHandler');
-const ReferralHandler = require('../handlers/referralHandler');
+// const ReferralHandler = require('../handlers/referralHandler'); // REMOVE THIS DUPLICATE LINE
 const BanHandler = require('../handlers/banHandler');
 const channelVerificationMiddleware = require('../middleware/channelVerification');
 const banCheckMiddleware = require('../middleware/banCheck');
@@ -18,12 +18,6 @@ class MiniBotManager {
     this.adminSessions = new Map();
     this.messageFlowSessions = new Map();
     this.welcomeMessageSessions = new Map();
-    this.referralSessions = new Map();
-    this.currencySessions = new Map();
-    this.initializationPromise = null;
-    this.isInitialized = false;
-    this.initializationAttempts = 0;
-    this.maxInitializationAttempts = 5;
     
     // Environment detection
     this.isDevelopment = process.env.NODE_ENV === 'development' || 
@@ -1052,6 +1046,9 @@ handleTextMessage = async (ctx) => {
     const { metaBotInfo } = ctx;
     
     // === WITHDRAWAL SESSION CHECK - AT THE VERY BEGINNING ===
+    // Dynamic import to avoid circular dependencies
+    const ReferralHandler = require('../handlers/referralHandler');
+    
     // Check if this is a withdrawal amount input
     if (ReferralHandler.hasActiveWithdrawalSession(user.id, metaBotInfo.mainBotId)) {
       console.log('🔔 Processing withdrawal amount input from user:', user.id);
