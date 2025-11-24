@@ -1,6 +1,7 @@
 // src/services/MiniBotManager.js - OPTIMIZED POLLING VERSION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
+const ReferralHandler = require('../handlers/referralHandler');
 
 // Import new feature handlers
 const ChannelJoinHandler = require('../handlers/channelJoinHandler');
@@ -1050,9 +1051,7 @@ handleTextMessage = async (ctx) => {
     const message = ctx.message.text;
     const { metaBotInfo } = ctx;
     
-    // === ADD WITHDRAWAL SESSION CHECK HERE - AT THE VERY BEGINNING ===
-    const ReferralHandler = require('./referralHandler');
-    
+    // === WITHDRAWAL SESSION CHECK - AT THE VERY BEGINNING ===
     // Check if this is a withdrawal amount input
     if (ReferralHandler.hasActiveWithdrawalSession(user.id, metaBotInfo.mainBotId)) {
       console.log('🔔 Processing withdrawal amount input from user:', user.id);
