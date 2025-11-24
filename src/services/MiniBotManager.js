@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - OPTIMIZED POLLING VERSION
+// src/services/MiniBotManager.js - UPDATED VERSION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 const ReferralHandler = require('../handlers/referralHandler');
@@ -710,8 +710,7 @@ try {
         [Markup.button.callback('📊 Statistics', 'mini_stats')],
         [Markup.button.callback('👥 Manage Admins', 'mini_admins')],
         [Markup.button.callback('⚙️ Bot Settings', 'mini_settings')],
-        // REMOVED: Referral Program button as requested
-        [Markup.button.callback('🚫 Ban Management', `ban_management_${metaBotInfo.mainBotId}`)],
+        // REMOVED: Ban Management button from front dashboard (moved to settings)
         [Markup.button.url('🚀 Create More Bots', `https://t.me/${botRef.username}`)]
       ]);
       
@@ -841,7 +840,8 @@ try {
         [Markup.button.callback('🔄 Reset Welcome Message', 'settings_reset_welcome')],
         [Markup.button.callback('📢 Channel Join Settings', 'settings_channels')],
         [Markup.button.callback('💰 Referral Program', 'settings_referral')],
-        // REMOVED: Ban Management button as requested (already in Bot Settings)
+        // MOVED: Ban Management button from front dashboard to settings (after Referral Program)
+        [Markup.button.callback('🚫 Ban Management', `ban_management_${botId}`)],
         [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
       ]);
       
@@ -1248,7 +1248,7 @@ handleTextMessage = async (ctx) => {
         message_type: 'text'
       });
       
-      // FIXED: Ensure message is actually sent to admins
+      // FIXED: Enhanced message delivery to admins
       await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'text', ctx.message);
       
       const successMsg = await ctx.reply('✅ Your message has been received.');
@@ -1886,6 +1886,7 @@ handleTextMessage = async (ctx) => {
     }
   };
   
+  // FIXED: Enhanced notifyAdminsRealTime method for better message delivery
   notifyAdminsRealTime = async (botId, feedback, user, messageType = 'text', originalMessage = null) => {
     try {
       console.log(`🔔 Sending real-time notification for bot ID: ${botId}, type: ${messageType}`);
@@ -1905,16 +1906,35 @@ handleTextMessage = async (ctx) => {
         return;
       }
       
+      console.log(`✅ Bot instance found for notifications: ${bot.bot_name}`);
+      
       const mediaEmoji = this.getMediaTypeEmoji(messageType);
       const mediaTypeText = messageType === 'text' ? 'Message' : messageType.charAt(0).toUpperCase() + messageType.slice(1);
       
-      for (const admin of admins) {
+      // Enhanced notification for all admins including owner
+      const allAdmins = [...admins];
+      
+      // Ensure owner is included if not already in admins list
+      const ownerIsAdmin = admins.find(admin => admin.admin_user_id === bot.owner_id);
+      if (!ownerIsAdmin) {
+        const owner = await User.findOne({ where: { telegram_id: bot.owner_id } });
+        if (owner) {
+          allAdmins.push({ User: owner });
+        }
+      }
+      
+      let notificationSent = false;
+      
+      for (const admin of allAdmins) {
         if (admin.User) {
           try {
+            let notificationMessage;
+            
             if (messageType === 'image' && originalMessage && originalMessage.photo) {
+              const photo = originalMessage.photo[originalMessage.photo.length - 1];
               await botInstance.telegram.sendPhoto(
                 admin.User.telegram_id,
-                originalMessage.photo[originalMessage.photo.length - 1].file_id,
+                photo.file_id,
                 {
                   caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
                            `💬 ${originalMessage.caption || '[No caption]'}`,
@@ -1924,6 +1944,8 @@ handleTextMessage = async (ctx) => {
                   ])
                 }
               );
+              notificationSent = true;
+              
             } else if (messageType === 'video' && originalMessage && originalMessage.video) {
               await botInstance.telegram.sendVideo(
                 admin.User.telegram_id,
@@ -1937,6 +1959,8 @@ handleTextMessage = async (ctx) => {
                   ])
                 }
               );
+              notificationSent = true;
+              
             } else if (messageType === 'document' && originalMessage && originalMessage.document) {
               await botInstance.telegram.sendDocument(
                 admin.User.telegram_id,
@@ -1950,6 +1974,8 @@ handleTextMessage = async (ctx) => {
                   ])
                 }
               );
+              notificationSent = true;
+              
             } else if (messageType === 'audio' && originalMessage && originalMessage.audio) {
               await botInstance.telegram.sendAudio(
                 admin.User.telegram_id,
@@ -1963,6 +1989,8 @@ handleTextMessage = async (ctx) => {
                   ])
                 }
               );
+              notificationSent = true;
+              
             } else if (messageType === 'voice' && originalMessage && originalMessage.voice) {
               await botInstance.telegram.sendVoice(
                 admin.User.telegram_id,
@@ -1975,6 +2003,8 @@ handleTextMessage = async (ctx) => {
                   ])
                 }
               );
+              notificationSent = true;
+              
             } else if (messageType === 'media_group' && originalMessage) {
               await botInstance.telegram.sendMessage(
                 admin.User.telegram_id,
@@ -1988,8 +2018,11 @@ handleTextMessage = async (ctx) => {
                   ])
                 }
               );
+              notificationSent = true;
+              
             } else {
-              let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
+              // Text message or fallback
+              notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
                 `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
               
               if (messageType === 'text') {
@@ -2005,108 +2038,22 @@ handleTextMessage = async (ctx) => {
                   [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
                 ])
               });
+              notificationSent = true;
             }
             
-            console.log(`🔔 Media notification sent to admin: ${admin.User.username}`);
+            console.log(`🔔 Notification sent to admin: ${admin.User.username || admin.User.telegram_id}`);
+            
           } catch (error) {
-            console.error(`Failed to notify admin ${admin.User.username}:`, error.message);
+            console.error(`Failed to notify admin ${admin.User.username || admin.User.telegram_id}:`, error.message);
           }
         }
       }
       
-      const owner = await User.findOne({ where: { telegram_id: bot.owner_id } });
-      if (owner && !admins.find(a => a.admin_user_id === owner.telegram_id)) {
-        try {
-          if (messageType === 'image' && originalMessage && originalMessage.photo) {
-            await botInstance.telegram.sendPhoto(
-              owner.telegram_id,
-              originalMessage.photo[originalMessage.photo.length - 1].file_id,
-              {
-                caption: `🔔 *New Image from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'video' && originalMessage && originalMessage.video) {
-            await botInstance.telegram.sendVideo(
-              owner.telegram_id,
-              originalMessage.video.file_id,
-              {
-                caption: `🔔 *New Video from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'document' && originalMessage && originalMessage.document) {
-            await botInstance.telegram.sendDocument(
-              owner.telegram_id,
-              originalMessage.document.file_id,
-              {
-                caption: `🔔 *New File from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'audio' && originalMessage && originalMessage.audio) {
-            await botInstance.telegram.sendAudio(
-              owner.telegram_id,
-              originalMessage.audio.file_id,
-              {
-                caption: `🔔 *New Audio from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*\n\n` +
-                         `💬 ${originalMessage.caption || '[No caption]'}`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else if (messageType === 'voice' && originalMessage && originalMessage.voice) {
-            await botInstance.telegram.sendVoice(
-              owner.telegram_id,
-              originalMessage.voice.file_id,
-              {
-                caption: `🔔 *New Voice Message from ${user.first_name}${user.username ? ` (@${user.username})` : ''}*`,
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                  [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-                ])
-              }
-            );
-          } else {
-            let notificationMessage = `🔔 *New ${mediaTypeText} Received*\n\n` +
-              `*From:* ${user.first_name}${user.username ? ` (@${user.username})` : ''}\n`;
-            
-            if (messageType === 'text') {
-              notificationMessage += `*Message:* ${feedback.message}`;
-            } else {
-              notificationMessage += `*Caption:* ${feedback.media_caption || '[No caption]'}\n` +
-                `*Type:* ${messageType}`;
-            }
-            
-            await botInstance.telegram.sendMessage(owner.telegram_id, notificationMessage, {
-              parse_mode: 'Markdown',
-              ...Markup.inlineKeyboard([
-                [Markup.button.callback('📩 Reply Now', `reply_${feedback.id}`)]
-              ])
-            });
-          }
-          
-          console.log(`🔔 Media notification sent to owner: ${owner.username}`);
-        } catch (error) {
-          console.error('Failed to notify owner:', error.message);
-        }
+      if (notificationSent) {
+        console.log(`✅ Real-time notifications sent successfully for ${bot.bot_name}`);
+      } else {
+        console.error(`❌ No notifications were sent for ${bot.bot_name}`);
       }
-      
-      console.log(`🔔 Real-time media notification sent for ${bot.bot_name}`);
       
     } catch (error) {
       console.error('Real-time notification error:', error);
