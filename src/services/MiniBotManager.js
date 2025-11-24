@@ -1051,7 +1051,7 @@ handleTextMessage = async (ctx) => {
     const { metaBotInfo } = ctx;
     
     // === ADD WITHDRAWAL SESSION CHECK HERE - AT THE VERY BEGINNING ===
-    const ReferralHandler = require('./ReferralHandler');
+    const ReferralHandler = require('./referralHandler');
     
     // Check if this is a withdrawal amount input
     if (ReferralHandler.hasActiveWithdrawalSession(user.id, metaBotInfo.mainBotId)) {
