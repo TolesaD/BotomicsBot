@@ -114,7 +114,7 @@ class ChannelJoinHandler {
 
       notJoinedChannels.forEach((channel, index) => {
         message += `${index + 1}. ${channel.channel_title}\n` +
-          `   👉 @${channel.channel_username}\n\n`;
+          `   👉 ${channel.channel_username}\n\n`;
       });
 
       message += `\n✅ Join all channels above, then click the verification button below.`;

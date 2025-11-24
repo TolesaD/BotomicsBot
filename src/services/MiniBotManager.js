@@ -1044,37 +1044,61 @@ try {
     }
   };
   
-  handleTextMessage = async (ctx) => {
-    try {
-      const user = ctx.from;
-      const message = ctx.message.text;
-      const { metaBotInfo } = ctx;
-      
-      // Check referral sessions FIRST
-      const referralSession = this.referralSessions.get(user.id);
-      if (referralSession) {
-        if (message === '/cancel') {
-          this.referralSessions.delete(user.id);
-          await ctx.reply('❌ Referral settings change cancelled.');
-          return;
-        }
-        await ReferralHandler.processReferralSettingChange(ctx, referralSession.botId, message);
+handleTextMessage = async (ctx) => {
+  try {
+    const user = ctx.from;
+    const message = ctx.message.text;
+    const { metaBotInfo } = ctx;
+    
+    // === ADD WITHDRAWAL SESSION CHECK HERE - AT THE VERY BEGINNING ===
+    const ReferralHandler = require('./ReferralHandler');
+    
+    // Check if this is a withdrawal amount input
+    if (ReferralHandler.hasActiveWithdrawalSession(user.id, metaBotInfo.mainBotId)) {
+      console.log('🔔 Processing withdrawal amount input from user:', user.id);
+      const processed = await ReferralHandler.processWithdrawalTextInput(ctx, metaBotInfo.mainBotId, message);
+      if (processed) {
+        console.log('✅ Withdrawal amount processed successfully');
+        return; // Stop further processing - IMPORTANT!
+      }
+    }
+    
+    // Check if this is a referral settings input
+    if (ReferralHandler.hasActiveReferralSession(user.id, metaBotInfo.mainBotId)) {
+      console.log('🔔 Processing referral setting input from user:', user.id);
+      const processed = await ReferralHandler.processWithdrawalTextInput(ctx, metaBotInfo.mainBotId, message);
+      if (processed) {
+        console.log('✅ Referral setting processed successfully');
+        return; // Stop further processing - IMPORTANT!
+      }
+    }
+    // === END OF WITHDRAWAL SESSION CHECK ===
+    
+    // Check referral sessions FIRST
+    const referralSession = this.referralSessions.get(user.id);
+    if (referralSession) {
+      if (message === '/cancel') {
         this.referralSessions.delete(user.id);
+        await ctx.reply('❌ Referral settings change cancelled.');
         return;
       }
-      
-      // Check currency sessions
-      const currencySession = this.currencySessions.get(user.id);
-      if (currencySession) {
-        if (message === '/cancel') {
-          this.currencySessions.delete(user.id);
-          await ctx.reply('❌ Currency setting cancelled.');
-          return;
-        }
-        await ReferralHandler.processCurrencySetting(ctx, currencySession.botId, message);
+      await ReferralHandler.processReferralSettingChange(ctx, referralSession.botId, message);
+      this.referralSessions.delete(user.id);
+      return;
+    }
+    
+    // Check currency sessions
+    const currencySession = this.currencySessions.get(user.id);
+    if (currencySession) {
+      if (message === '/cancel') {
         this.currencySessions.delete(user.id);
+        await ctx.reply('❌ Currency setting cancelled.');
         return;
       }
+      await ReferralHandler.processCurrencySetting(ctx, currencySession.botId, message);
+      this.currencySessions.delete(user.id);
+      return;
+    }
       
       const welcomeSession = this.welcomeMessageSessions.get(user.id);
       if (welcomeSession && welcomeSession.step === 'awaiting_welcome_message') {

@@ -1217,6 +1217,20 @@ class ReferralHandler {
     }
   }
 
+  // NEW METHOD: Check if user has active withdrawal session
+  static hasActiveWithdrawalSession(userId, botId) {
+    this.cleanupExpiredSessions();
+    const session = this.withdrawalSessions?.get(userId);
+    return session && session.botId == botId && session.step === 'awaiting_withdrawal_amount';
+  }
+
+  // NEW METHOD: Check if user has active referral session
+  static hasActiveReferralSession(userId, botId) {
+    this.cleanupExpiredSessions();
+    const session = this.referralSessions?.get(userId);
+    return session && session.botId == botId;
+  }
+
   // Register callback handlers
   static registerCallbacks(bot) {
     console.log('🔄 Registering referral callback handlers...');
