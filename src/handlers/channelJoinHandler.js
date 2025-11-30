@@ -64,6 +64,118 @@ class ChannelJoinHandler {
     }
   }
 
+  // Check channel limits based on subscription tier
+static async checkChannelLimit(ctx, botId) {
+  try {
+    const SubscriptionService = require('../services/subscriptionService');
+    
+    // USE SUBSCRIPTION SERVICE INSTEAD OF DIRECT QUERY
+    const channelLimit = await SubscriptionService.checkFeatureAccess(ctx.from.id, 'force_join_channels');
+    
+    // Count current active channels for this bot
+    const activeChannelsCount = await ChannelJoin.count({
+      where: { 
+        bot_id: botId, 
+        is_active: true 
+      }
+    });
+
+    // Apply subscription limits
+    if (activeChannelsCount >= channelLimit) {
+      return {
+        allowed: false,
+        reason: `❌ ${channelLimit === 1 ? 'Freemium Limit Reached!' : 'Channel Limit Reached!'}\n\n` +
+                `You have ${activeChannelsCount}/${channelLimit} active channels.\n\n` +
+                `*Freemium:* 1 channel max\n` +
+                `*Premium:* Unlimited channels\n\n` +
+                `💎 Upgrade to Premium for unlimited channels!`,
+        tier: channelLimit === 1 ? 'freemium' : 'premium',
+        currentCount: activeChannelsCount,
+        limit: channelLimit
+      };
+    }
+
+    return { 
+      allowed: true, 
+      tier: channelLimit === 1 ? 'freemium' : 'premium',
+      currentCount: activeChannelsCount,
+      limit: channelLimit
+    };
+    
+  } catch (error) {
+    console.error('Channel limit check error:', error);
+    // Default to freemium limits if there's an error
+    const activeChannelsCount = await ChannelJoin.count({
+      where: { 
+        bot_id: botId, 
+        is_active: true 
+      }
+    });
+    
+    if (activeChannelsCount >= 1) {
+      return {
+        allowed: false,
+        reason: `❌ Channel limit reached.\n\nPlease upgrade to Premium for unlimited channels.`,
+        tier: 'freemium'
+      };
+    }
+    
+    return { allowed: true, tier: 'freemium' };
+  }
+}
+
+// Update the startAddChannel method to show current usage:
+static async startAddChannel(ctx, botId) {
+  try {
+    await ctx.answerCbQuery();
+    
+    // Check channel limit before allowing addition
+    const limitCheck = await this.checkChannelLimit(ctx, botId);
+    if (!limitCheck.allowed) {
+      await ctx.reply(limitCheck.reason, { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+          [Markup.button.callback('🔙 Back', `channel_manage_${botId}`)]
+        ])
+      });
+      return;
+    }
+    
+    this.channelSessions = this.channelSessions || new Map();
+    this.channelSessions.set(ctx.from.id, {
+      botId: botId,
+      step: 'awaiting_channel_info'
+    });
+
+    await ctx.reply(
+      `➕ *Add Required Channel*\n\n` +
+      `Please send the channel information in this format:\n\n` +
+      `\`@channel_username Channel Title\`\n\n` +
+      `*Example:*\n` +
+      `\`@MyChannel My Awesome Channel\`\n\n` +
+      `*Important:*\n` +
+      `• Your bot must be admin in the channel\n` +
+      `• Use the channel username (with @)\n` +
+      `• Channel title can be any descriptive name\n\n` +
+      `*Your Plan:* ${limitCheck.tier === 'premium' ? '💎 Premium' : '🎫 Freemium'}\n` +
+      `*Current Usage:* ${limitCheck.currentCount}/${limitCheck.limit} channels\n` +
+      `*Channel Limit:* ${limitCheck.tier === 'premium' ? 'Unlimited' : '1 channel'}\n\n` +
+      `*Cancel:* Type /cancel`,
+      { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🚫 Cancel', `channel_manage_${botId}`)]
+        ])
+      }
+    );
+
+  } catch (error) {
+    console.error('Start add channel error:', error);
+    await ctx.reply('❌ Error starting channel addition.');
+  }
+}
+
   // Disable all channels
   static async disableAllChannels(ctx, botId) {
     try {
@@ -315,6 +427,19 @@ class ChannelJoinHandler {
     try {
       await ctx.answerCbQuery();
       
+      // Check channel limit before allowing addition
+      const limitCheck = await this.checkChannelLimit(ctx, botId);
+      if (!limitCheck.allowed) {
+        await ctx.reply(limitCheck.reason, { 
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+            [Markup.button.callback('🔙 Back', `channel_manage_${botId}`)]
+          ])
+        });
+        return;
+      }
+      
       this.channelSessions = this.channelSessions || new Map();
       this.channelSessions.set(ctx.from.id, {
         botId: botId,
@@ -331,6 +456,8 @@ class ChannelJoinHandler {
         `• Your bot must be admin in the channel\n` +
         `• Use the channel username (with @)\n` +
         `• Channel title can be any descriptive name\n\n` +
+        `*Your Plan:* ${limitCheck.tier === 'premium' ? '💎 Premium' : '🎫 Freemium'}\n` +
+        `*Channel Limit:* ${limitCheck.tier === 'premium' ? 'Unlimited' : '1 channel'}\n\n` +
         `*Cancel:* Type /cancel`,
         { 
           parse_mode: 'Markdown',
@@ -353,6 +480,20 @@ class ChannelJoinHandler {
       this.channelSessions?.delete(ctx.from.id);
       await ctx.reply('❌ Channel addition cancelled.');
       await this.showChannelManagement(ctx, botId);
+      return;
+    }
+
+    // Check channel limit again (safety measure)
+    const limitCheck = await this.checkChannelLimit(ctx, botId);
+    if (!limitCheck.allowed) {
+      await ctx.reply(limitCheck.reason, { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+          [Markup.button.callback('🔙 Back', `channel_manage_${botId}`)]
+        ])
+      });
+      this.channelSessions?.delete(ctx.from.id);
       return;
     }
 
@@ -556,6 +697,20 @@ class ChannelJoinHandler {
     bot.action(/^continue_after_verify_(.+)/, async (ctx) => {
       const botId = ctx.match[1];
       await ChannelJoinHandler.handleContinueAfterVerify(ctx, botId);
+    });
+    
+    bot.action('premium_upgrade', async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        `💎 *Premium Subscription*\n\n` +
+        `Upgrade to Premium to unlock:\n` +
+        `• Unlimited force join channels\n` +
+        `• Advanced bot features\n` +
+        `• Priority support\n\n` +
+        `*Monthly Price:* 5 BOM\n\n` +
+        `Contact @admin to upgrade your account.`,
+        { parse_mode: 'Markdown' }
+      );
     });
     
     console.log('✅ Channel join callback handlers registered');

@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - COMPLETE BOTOMICS VERSION
+// src/services/MiniBotManager.js - COMPLETE BOTOMICS UPGRADE
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 const ReferralHandler = require('../handlers/referralHandler');
@@ -749,9 +749,9 @@ class MiniBotManager {
     console.log('✅ Bot handlers setup complete with all Botomics features');
   };
 
-  // BOTOMICS FEATURES IMPLEMENTATION
+  // ==================== BOTOMICS FEATURES IMPLEMENTATION ====================
 
-  // 1. Pin /start Message Feature
+  // 1. Pin /start Message Feature with Premium Check
   handlePinStartMessage = async (ctx, botId) => {
     try {
       const { metaBotInfo } = ctx;
@@ -763,8 +763,25 @@ class MiniBotManager {
       }
       
       // Check premium access
-      const hasPremium = await this.checkPremiumAccess(ctx, 'Pin Start Message');
-      if (!hasPremium) {
+      const canPin = await SubscriptionService.checkFeatureAccess(ctx.from.id, 'pin_messages');
+      
+      if (!canPin) {
+        await ctx.reply(
+          `❌ *Premium Feature Required*\n\n` +
+          `Message pinning is available for premium users only.\n\n` +
+          `💎 *Upgrade to unlock:*\n` +
+          `• Pin start messages\n` +
+          `• Unlimited features\n` +
+          `• Ad-free experience\n\n` +
+          `*Price:* 5 BOM per month ($5.00)`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+              [Markup.button.callback('🔙 Back', `settings_${botId}`)]
+            ])
+          }
+        );
         return;
       }
       
@@ -829,7 +846,7 @@ class MiniBotManager {
     }
   };
 
-  // 3. Donation System
+  // 2. Donation System with Premium Check
   handleDonation = async (ctx, botId = null) => {
     try {
       const targetBotId = botId || ctx.metaBotInfo?.mainBotId;
@@ -841,8 +858,28 @@ class MiniBotManager {
       }
       
       // Check if donation system is enabled
-      const subscriptionTier = await SubscriptionService.getSubscriptionTier(bot.owner_id);
-      if (subscriptionTier !== 'premium' && !bot.has_donation_enabled) {
+      const canEnableDonation = await SubscriptionService.checkFeatureAccess(bot.owner_id, 'donation_system');
+      if (!canEnableDonation && !bot.has_donation_enabled) {
+        await ctx.reply(
+          `❌ *Donation System Not Available*\n\n` +
+          `This bot owner needs to upgrade to premium to enable donations.\n\n` +
+          `💎 *Premium benefits:*\n` +
+          `• Enable donation system\n` +
+          `• Receive BOM donations\n` +
+          `• All premium features\n\n` +
+          `*Price:* 5 BOM per month ($5.00)`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('💎 Learn More', 'subscribe_premium')],
+              [Markup.button.callback('🔙 Back', 'start')]
+            ])
+          }
+        );
+        return;
+      }
+      
+      if (!bot.has_donation_enabled) {
         await ctx.reply('❌ Donation system is not enabled for this bot.');
         return;
       }
@@ -928,9 +965,25 @@ class MiniBotManager {
         return;
       }
       
-      const subscriptionTier = await SubscriptionService.getSubscriptionTier(ctx.from.id);
-      if (subscriptionTier !== 'premium') {
-        await ctx.reply('❌ Premium subscription required to enable donation system.');
+      const canEnableDonation = await SubscriptionService.checkFeatureAccess(ctx.from.id, 'donation_system');
+      
+      if (!canEnableDonation) {
+        await ctx.reply(
+          `❌ *Premium Feature Required*\n\n` +
+          `Donation system is available for premium users only.\n\n` +
+          `💎 *Upgrade to unlock:*\n` +
+          `• Enable donation system\n` +
+          `• Receive BOM donations\n` +
+          `• All premium features\n\n` +
+          `*Price:* 5 BOM per month ($5.00)`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+              [Markup.button.callback('🔙 Back', `settings_${botId}`)]
+            ])
+          }
+        );
         return;
       }
       
@@ -953,7 +1006,7 @@ class MiniBotManager {
     }
   };
 
-  // 4. Transfer Bot Ownership with Security
+  // 3. Transfer Bot Ownership with Security
   handleTransferOwnership = async (ctx, botId) => {
     try {
       const isOwner = await this.checkOwnerAccess(botId, ctx.from.id);
@@ -1096,117 +1149,75 @@ class MiniBotManager {
     }
   };
 
-  // Security validation for token changes
-  validateBotTokenChange = async (userId, botId) => {
-    try {
-      const bot = await Bot.findByPk(botId);
-      
-      // If ownership was transferred, only current owner can change token
-      if (bot.ownership_transferred && bot.owner_id !== userId) {
-        return {
-          allowed: false,
-          reason: 'Bot ownership has been transferred. Only the current owner can change the bot token.'
-        };
-      }
-      
-      return { allowed: true };
-    } catch (error) {
-      console.error('Token change validation error:', error);
-      return { allowed: false, reason: 'Validation error' };
-    }
-  };
-
-  // Premium access check utility
-  checkPremiumAccess = async (ctx, featureName) => {
+  // 4. Enhanced Broadcast with Weekly Limits
+  startBroadcast = async (ctx, botId) => {
     try {
       const userId = ctx.from.id;
-      const subscriptionTier = await SubscriptionService.getSubscriptionTier(userId);
       
-      if (subscriptionTier !== 'premium') {
-        const botRef = this.getBotReference();
+      // CHECK BROADCAST LIMIT
+      const broadcastCheck = await SubscriptionService.canUserBroadcast(userId, botId);
+      
+      if (!broadcastCheck.canBroadcast) {
         await ctx.reply(
-          `🎫 *Premium Feature: ${featureName}*\n\n` +
-          `This feature requires a premium subscription.\n\n` +
-          `*Benefits of Premium:*\n` +
-          `✅ Unlimited bots & broadcasts\n` +
-          `✅ Advanced features like message pinning\n` +
-          `✅ Donation system\n` +
-          `✅ Ad-free experience\n\n` +
-          `Upgrade now in our main bot:\n` +
-          `@${botRef.username}`,
-          { 
+          `❌ *Weekly Broadcast Limit Reached*\n\n` +
+          `You have used ${broadcastCheck.currentCount}/${broadcastCheck.weeklyLimit} broadcasts this week.\n\n` +
+          `*Freemium:* 3 broadcasts per week\n` +
+          `*Premium:* Unlimited broadcasts\n\n` +
+          `💎 Upgrade to Premium for unlimited broadcasts!\n\n` +
+          `*Reset:* ${this.getNextResetDate()}`,
+          {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.url(`⭐ Upgrade @${botRef.username}`, `https://t.me/${botRef.username}`)],
-              [Markup.button.callback('🔙 Back', 'mini_dashboard')]
+              [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+              [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
             ])
           }
         );
-        return false;
+        return;
+      }
+
+      const userCount = await UserLog.count({ where: { bot_id: botId } });
+      
+      if (userCount === 0) {
+        await ctx.reply('❌ No users found for broadcasting.');
+        return;
       }
       
-      return true;
-    } catch (error) {
-      console.error('Premium access check error:', error);
-      await ctx.reply('❌ Error checking premium access.');
-      return false;
-    }
-  };
-
-  // Enhanced start handler with pinned messages
-  handleStart = async (ctx) => {
-    try {
-      const { metaBotInfo } = ctx;
-      const user = ctx.from;
-      
-      console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name} (ID: ${user.id})`);
-      
-      await this.setBotCommands(ctx.telegram, null, user.id);
-      
-      await UserLog.upsert({
-        bot_id: metaBotInfo.mainBotId,
-        user_id: user.id,
-        user_username: user.username,
-        user_first_name: user.first_name,
-        last_interaction: new Date(),
-        first_interaction: new Date(),
-        interaction_count: 1
+      this.broadcastSessions.set(userId, {
+        botId: botId,
+        step: 'awaiting_message',
+        broadcastCheck: broadcastCheck // Store for reference
       });
       
-      // Update bot user count
-      await this.updateBotUserCount(metaBotInfo.mainBotId);
-      
-      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
-      
-      // Show pinned message if exists (for both new and existing users)
-      const bot = await Bot.findByPk(metaBotInfo.mainBotId);
-      if (bot.pinned_start_message) {
-        await ctx.replyWithMarkdown(bot.pinned_start_message);
-      }
-      
-      // Show ad to non-admin, non-premium users
-      if (!isAdmin) {
-        const userTier = await SubscriptionService.getSubscriptionTier(user.id);
-        if (userTier !== 'premium') {
-          await this.displayAdToUser(ctx, metaBotInfo.mainBotId);
-        }
-      }
-      
-      if (isAdmin) {
-        await this.showAdminDashboard(ctx, metaBotInfo);
-      } else {
-        await this.showUserWelcome(ctx, metaBotInfo);
-      }
+      await ctx.reply(
+        `📢 *Send Broadcast*\n\n` +
+        `*Recipients:* ${userCount} users\n` +
+        `*Weekly Usage:* ${broadcastCheck.currentCount}/${broadcastCheck.weeklyLimit}\n` +
+        `*Remaining:* ${broadcastCheck.remaining} broadcasts this week\n\n` +
+        `Please type your broadcast message:\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
       
     } catch (error) {
-      console.error('Start handler error:', error);
-      await ctx.reply('Welcome! Send me a message, image, or video.');
+      console.error('Start broadcast error:', error);
+      await ctx.reply('❌ Error starting broadcast.');
     }
   };
 
-  // Ad display system
+  // 5. Enhanced Ad Display with Premium Check
   displayAdToUser = async (ctx, botId) => {
     try {
+      const userId = ctx.from.id;
+      
+      // Check if user has premium and ads removed
+      const userTier = await SubscriptionService.getSubscriptionTier(userId);
+      const hasAdsRemoved = await SubscriptionService.checkFeatureAccess(userId, 'remove_ads');
+      
+      if (userTier === 'premium' && hasAdsRemoved) {
+        return false; // No ads for premium users who removed ads
+      }
+      
       // Simple ad implementation - can be enhanced with real ad system
       const showAd = Math.random() < 0.3; // 30% chance to show ad
       
@@ -1245,6 +1256,65 @@ class MiniBotManager {
     }
   };
 
+  // Helper method for next reset date
+  getNextResetDate() {
+    const now = new Date();
+    const nextMonday = new Date(now);
+    nextMonday.setDate(now.getDate() + ((7 - now.getDay()) % 7 + 1) % 7);
+    nextMonday.setHours(0, 0, 0, 0);
+    return nextMonday.toLocaleDateString();
+  }
+
+  // ==================== EXISTING FEATURES (KEPT INTACT) ====================
+
+  // Enhanced start handler with pinned messages
+  handleStart = async (ctx) => {
+    try {
+      const { metaBotInfo } = ctx;
+      const user = ctx.from;
+      
+      console.log(`🚀 Start command received for ${metaBotInfo.botName} from ${user.first_name} (ID: ${user.id})`);
+      
+      await this.setBotCommands(ctx.telegram, null, user.id);
+      
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date(),
+        first_interaction: new Date(),
+        interaction_count: 1
+      });
+      
+      // Update bot user count
+      await this.updateBotUserCount(metaBotInfo.mainBotId);
+      
+      const isAdmin = await this.checkAdminAccess(metaBotInfo.mainBotId, user.id);
+      
+      // Show pinned message if exists (for both new and existing users)
+      const bot = await Bot.findByPk(metaBotInfo.mainBotId);
+      if (bot.pinned_start_message) {
+        await ctx.replyWithMarkdown(bot.pinned_start_message);
+      }
+      
+      // Show ad to non-admin, non-premium users
+      if (!isAdmin) {
+        await this.displayAdToUser(ctx, metaBotInfo.mainBotId);
+      }
+      
+      if (isAdmin) {
+        await this.showAdminDashboard(ctx, metaBotInfo);
+      } else {
+        await this.showUserWelcome(ctx, metaBotInfo);
+      }
+      
+    } catch (error) {
+      console.error('Start handler error:', error);
+      await ctx.reply('Welcome! Send me a message, image, or video.');
+    }
+  };
+
   // Update bot user count
   updateBotUserCount = async (botId) => {
     try {
@@ -1264,7 +1334,7 @@ class MiniBotManager {
     }
   };
 
-  // Enhanced settings with Botomics features - FIXED HORIZONTAL LAYOUT
+  // Enhanced settings with Botomics features
   showSettings = async (ctx, botId) => {
     try {
       const bot = await Bot.findByPk(botId);
@@ -2423,32 +2493,60 @@ handleHelp = async (ctx) => {
     };
     
     startBroadcast = async (ctx, botId) => {
-      try {
-        const userCount = await UserLog.count({ where: { bot_id: botId } });
-        
-        if (userCount === 0) {
-          await ctx.reply('❌ No users found for broadcasting.');
-          return;
+  try {
+    const userId = ctx.from.id;
+    
+    // CHECK BROADCAST LIMIT
+    const SubscriptionService = require('./subscriptionService');
+    const broadcastCheck = await SubscriptionService.canUserBroadcast(userId, botId);
+    
+    if (!broadcastCheck.canBroadcast) {
+      await ctx.reply(
+        `❌ *Weekly Broadcast Limit Reached*\n\n` +
+        `You have used ${broadcastCheck.currentCount}/${broadcastCheck.weeklyLimit} broadcasts this week.\n\n` +
+        `*Freemium:* 3 broadcasts per week\n` +
+        `*Premium:* Unlimited broadcasts\n\n` +
+        `💎 Upgrade to Premium for unlimited broadcasts!\n\n` +
+        `*Reset:* ${this.getNextResetDate()}`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+            [Markup.button.callback('🔙 Dashboard', 'mini_dashboard')]
+          ])
         }
-        
-        this.broadcastSessions.set(ctx.from.id, {
-          botId: botId,
-          step: 'awaiting_message'
-        });
-        
-        await ctx.reply(
-          `📢 *Send Broadcast*\n\n` +
-          `*Recipients:* ${userCount} users\n\n` +
-          `Please type your broadcast message:\n\n` +
-          `*Cancel:* Type /cancel`,
-          { parse_mode: 'Markdown' }
-        );
-        
-      } catch (error) {
-        console.error('Start broadcast error:', error);
-        await ctx.reply('❌ Error starting broadcast.');
-      }
-    };
+      );
+      return;
+    }
+
+    const userCount = await UserLog.count({ where: { bot_id: botId } });
+    
+    if (userCount === 0) {
+      await ctx.reply('❌ No users found for broadcasting.');
+      return;
+    }
+    
+    this.broadcastSessions.set(userId, {
+      botId: botId,
+      step: 'awaiting_message',
+      broadcastCheck: broadcastCheck // Store for reference
+    });
+    
+    await ctx.reply(
+      `📢 *Send Broadcast*\n\n` +
+      `*Recipients:* ${userCount} users\n` +
+      `*Weekly Usage:* ${broadcastCheck.currentCount}/${broadcastCheck.weeklyLimit}\n` +
+      `*Remaining:* ${broadcastCheck.remaining} broadcasts this week\n\n` +
+      `Please type your broadcast message:\n\n` +
+      `*Cancel:* Type /cancel`,
+      { parse_mode: 'Markdown' }
+    );
+    
+  } catch (error) {
+    console.error('Start broadcast error:', error);
+    await ctx.reply('❌ Error starting broadcast.');
+  }
+};
     
     sendBroadcast = async (ctx, botId, message) => {
       try {

@@ -4,6 +4,7 @@ const Admin = require('../models/Admin');
 const User = require('../models/User');
 const { generateBotId } = require('../utils/helpers');
 const { validateBotName, validateBotToken, quickTokenCheck } = require('../utils/validators');
+const SubscriptionService = require('../services/subscriptionService');
 
 // Store bot creation sessions in memory
 const botCreationSessions = new Map();
@@ -18,14 +19,23 @@ const createBotHandler = async (ctx) => {
       return;
     }
     
-    // Check user bot limit
-    const userBotCount = await Bot.count({ where: { owner_id: userId } });
-    const maxBots = parseInt(process.env.MAX_BOTS_PER_USER) || 10;
+    // CHECK SUBSCRIPTION LIMIT
+    const botCheck = await SubscriptionService.canUserCreateBot(userId);
     
-    if (userBotCount >= maxBots) {
+    if (!botCheck.canCreate) {
       await ctx.reply(
-        `❌ You have reached the maximum limit of ${maxBots} bots.\n\n` +
-        `Please delete some bots before creating new ones.`
+        `❌ *${botCheck.botLimit === 5 ? 'Freemium Limit Reached' : 'Bot Limit Reached'}*\n\n` +
+        `You have created ${botCheck.currentCount}/${botCheck.botLimit} bots.\n\n` +
+        `*Freemium:* 5 bots max\n` +
+        `*Premium:* Unlimited bots\n\n` +
+        `💎 Upgrade to Premium for unlimited bots!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+            [Markup.button.callback('🔙 Main Menu', 'start')]
+          ])
+        }
       );
       return;
     }
@@ -45,6 +55,8 @@ const createBotHandler = async (ctx) => {
       `3. Follow the instructions\n` +
       `4. Copy the token and paste here\n\n` +
       `*Format:* \`1234567890:ABCdefGHIjklMNOPQRSTuvwXYZ123456\`\n\n` +
+      `*Your Bot Stats:* ${botCheck.currentCount}/${botCheck.botLimit} bots created\n` +
+      `*Remaining:* ${botCheck.remaining} bots\n\n` +
       `*Security Note:* 🔒 Your token is encrypted and secured.\n\n`+
       `To cancel this process, type /cancel here below.`;
 

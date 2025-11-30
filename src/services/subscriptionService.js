@@ -1,4 +1,4 @@
-const { UserSubscription, User, WalletService } = require('../models');
+const { UserSubscription, User, WalletService, Bot, BroadcastHistory } = require('../models');
 const { Op } = require('sequelize');
 
 class SubscriptionService {
@@ -114,7 +114,7 @@ class SubscriptionService {
         freemium: 5,
         premium: 9999
       },
-      broadcasts: {
+      broadcasts_per_week: {
         freemium: 3,
         premium: 9999
       },
@@ -130,17 +130,66 @@ class SubscriptionService {
         freemium: false,
         premium: true
       },
-      pin_start_message: {
+      pin_messages: {
         freemium: false,
         premium: true
       },
-      ads: {
-        freemium: true,
-        premium: false
+      remove_ads: {
+        freemium: false,
+        premium: true
       }
     };
     
     return featureLimits[feature] ? featureLimits[feature][tier] : null;
+  }
+
+  // NEW: Check weekly broadcast count
+  async getWeeklyBroadcastCount(userId, botId) {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    const broadcastCount = await BroadcastHistory.count({
+      where: {
+        bot_id: botId,
+        sent_by: userId,
+        created_at: {
+          [Op.gte]: oneWeekAgo
+        }
+      }
+    });
+    
+    return broadcastCount;
+  }
+
+  // NEW: Check if user can broadcast this week
+  async canUserBroadcast(userId, botId) {
+    const weeklyLimit = await this.checkFeatureAccess(userId, 'broadcasts_per_week');
+    const currentCount = await this.getWeeklyBroadcastCount(userId, botId);
+    
+    return {
+      canBroadcast: currentCount < weeklyLimit,
+      currentCount,
+      weeklyLimit,
+      remaining: weeklyLimit - currentCount
+    };
+  }
+
+  // NEW: Get user's bot count
+  async getUserBotCount(userId) {
+    return await Bot.count({ where: { owner_id: userId } });
+  }
+
+  // NEW: Check if user can create more bots
+  async canUserCreateBot(userId) {
+    const botLimit = await this.checkFeatureAccess(userId, 'bot_creation');
+    const currentCount = await this.getUserBotCount(userId);
+    
+    return {
+      canCreate: currentCount < botLimit,
+      currentCount,
+      botLimit,
+      remaining: botLimit - currentCount
+    };
   }
   
   async processAutoRenewals() {

@@ -45,26 +45,30 @@ class MetaBotCreator {
   }
   
   setupHandlers() {
-    console.log('🔄 Setting up bot handlers...');
+  console.log('🔄 Setting up bot handlers...');
+  
+  // Add Mini App FIRST
+  this.setupMiniApp();
+  
+  // Middleware
+  this.bot.use(async (ctx, next) => {
+    ctx.isMainBot = true;
+    ctx.miniBotManager = this;
     
-    // Middleware
-    this.bot.use(async (ctx, next) => {
-      ctx.isMainBot = true;
-      ctx.miniBotManager = this;
-      
-      // Skip ban check for platform admin
-      if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
-        return next();
-      }
-      
-      // Check if user is banned
-      if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
-        await ctx.reply('🚫 Your account has been banned from using this platform.');
-        return;
-      }
-      
+    // Skip ban check for platform admin
+    if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
       return next();
-    });
+    }
+    
+    // Check if user is banned
+    if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
+      await ctx.reply('🚫 Your account has been banned from using this platform.');
+      return;
+    }
+    
+    return next();
+  });
+  
     
     // Commands
     this.bot.start(startHandler);
@@ -179,6 +183,79 @@ class MetaBotCreator {
     
     console.log('✅ Main bot handlers setup complete');
   }
+
+  setupMiniApp() {
+  console.log('🔄 Setting up Mini App...');
+  
+  // Add Mini App to menu
+  this.bot.telegram.setChatMenuButton({
+    menu_button: {
+      type: 'web_app',
+      text: '💰 Botomics Wallet',
+      web_app: { url: 'https://your-domain.com/wallet' } // CHANGE TO YOUR ACTUAL URL
+    }
+  });
+  
+  // Mini App handler
+  this.bot.on('web_app_data', async (ctx) => {
+    try {
+      const data = JSON.parse(ctx.webAppData.data);
+      console.log('📱 Mini App data received:', data);
+      
+      const userId = ctx.from.id;
+      
+      switch (data.action) {
+        case 'get_balance':
+          const balance = await WalletService.getBalance(userId);
+          await ctx.reply(
+            `💰 *Your Wallet Balance*\n\n` +
+            `*Balance:* ${balance.balance} ${balance.currency}\n` +
+            `*Status:* ${balance.isFrozen ? '❄️ Frozen' : '✅ Active'}\n\n` +
+            `*1 BOM = $1.00 USD*`,
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        case 'premium_upgrade':
+          await this.upgradeToPremium(ctx);
+          break;
+          
+        case 'deposit_info':
+          await this.showDepositInstructions(ctx);
+          break;
+          
+        case 'withdraw_info':
+          await this.showWithdrawalInstructions(ctx);
+          break;
+          
+        case 'transaction_history':
+          await this.showTransactionHistory(ctx, 0);
+          break;
+          
+        case 'subscription_info':
+          await this.showPremium(ctx);
+          break;
+          
+        default:
+          await ctx.reply('❌ Unknown Mini App action');
+      }
+    } catch (error) {
+      console.error('Mini App error:', error);
+      await ctx.reply('❌ Mini App processing error');
+    }
+  });
+  
+  console.log('✅ Mini App setup complete');
+}
+
+// Add this method to get next reset date
+getNextResetDate() {
+  const now = new Date();
+  const nextMonday = new Date(now);
+  nextMonday.setDate(now.getDate() + ((7 - now.getDay()) % 7 + 1) % 7);
+  nextMonday.setHours(0, 0, 0, 0);
+  return nextMonday.toLocaleDateString();
+}
   
   setupCallbackHandlers() {
     console.log('🔄 Setting up main bot callback handlers...');
