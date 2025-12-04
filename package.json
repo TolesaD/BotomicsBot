@@ -24,7 +24,7 @@
     "test:new-features": "set NODE_ENV=development&& node test-new-features.js",
     "migrate:new-features": "set NODE_ENV=development&& node scripts/create_new_features_tables.js",
     "setup:test": "npm run migrate:new-features && npm run test:new-features",
-    "migrate:subscription": "node src/scripts/create_subscription_tables_postgres.js",
+    "migrate:subscription": "node src/scripts/create_subscription_tables.js",
     "setup:complete": "npm run migrate:subscription && node src/app.js",
     "setup:botomics": "node src/scripts/setup_botomics.js",
     "deploy:complete": "npm run migrate:all && npm run setup:botomics && npm run set-commands",
