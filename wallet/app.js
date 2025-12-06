@@ -1,7 +1,7 @@
-// wallet/app.js - UPDATED FOR YEGARA.COM DEPLOYMENT
+// wallet/app.js - UPDATED FOR Railway.COM DEPLOYMENT
 const tg = window.Telegram.WebApp;
 
-// Use relative paths for Yegara.com deployment
+// Use relative paths for Railway.com deployment
 const BACKEND_URL = '/api';  // Changed from absolute URL
 const BOTOMICS_SUPPORT_BOT = '@BotomicsSupportBot';
 

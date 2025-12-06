@@ -1,20 +1,15 @@
-﻿// src/app.js - UPDATED WITH INTEGRATED WALLET API
+﻿// src/app.js - COMPLETE RAILWAY DEPLOYMENT VERSION
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
   console.log('🔧 Development mode - Loading .env file');
 } else {
-  console.log('🚀 Production mode - Using cPanel environment variables');
-}
-
-const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
-if (isCpanel) {
-  console.log('✅ Running on Yegara.com cPanel');
-  process.env.NODE_ENV = 'production';
+  console.log('🚀 Production mode - Using Railway environment variables');
 }
 
 const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
 const path = require('path');
+const cors = require('cors');
 const config = require('../config/environment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
@@ -23,22 +18,21 @@ const { startHandler, helpHandler, featuresHandler } = require('./handlers/start
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
-
-// Import services
 const WalletService = require('./services/walletService');
 const SubscriptionService = require('./services/subscriptionService');
-
-// Import Wallet Handler
 const WalletHandler = require('./handlers/walletHandler');
 
 class MetaBotCreator {
   constructor() {
     if (!config.BOT_TOKEN) {
       console.error('❌ BOT_TOKEN is not set');
+      console.error('💡 Add BOT_TOKEN to Railway Variables');
       process.exit(1);
     }
     
     console.log(`🤖 Creating bot instance with token: ${config.BOT_TOKEN.substring(0, 10)}...`);
+    console.log('🚀 Optimized for Railway.com deployment');
+    
     this.bot = new Telegraf(config.BOT_TOKEN, {
       handlerTimeout: 90000,
       telegram: {
@@ -47,7 +41,6 @@ class MetaBotCreator {
       }
     });
     
-    // Create Express app for API endpoints
     this.expressApp = express();
     this.setupExpress();
     this.setupHandlers();
@@ -56,17 +49,24 @@ class MetaBotCreator {
   setupExpress() {
     console.log('🔄 Setting up Express server for API...');
     
-    // Middleware
+    this.expressApp.use(cors());
     this.expressApp.use(express.json());
     this.expressApp.use(express.urlencoded({ extended: true }));
     
-    // Serve wallet static files from root
-    this.expressApp.use('/wallet', express.static(path.join(__dirname, '../../wallet')));
+    const walletPath = path.join(__dirname, '../../wallet');
+    this.expressApp.use('/wallet', express.static(walletPath));
     
-    // Serve other static files
-    this.expressApp.use(express.static('public'));
+    this.expressApp.get('/api/health', (req, res) => {
+      res.json({ 
+        status: 'online', 
+        service: 'Botomics Platform',
+        version: '2.0.0',
+        timestamp: new Date().toISOString(),
+        environment: config.NODE_ENV,
+        platform: 'Railway'
+      });
+    });
     
-    // Wallet API endpoints
     this.expressApp.get('/api/wallet/health', (req, res) => {
       res.json({ 
         status: 'online', 
@@ -76,204 +76,54 @@ class MetaBotCreator {
       });
     });
     
-    this.expressApp.get('/api/wallet/balance', async (req, res) => {
-      try {
-        const { userId } = req.query;
-        if (!userId) {
-          return res.status(400).json({ error: 'User ID is required' });
-        }
-        
-        const balance = await WalletService.getBalance(userId);
-        res.json(balance);
-      } catch (error) {
-        console.error('Balance API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    this.expressApp.get('/api/wallet/transactions', async (req, res) => {
-      try {
-        const { userId, page = 1, limit = 10 } = req.query;
-        if (!userId) {
-          return res.status(400).json({ error: 'User ID is required' });
-        }
-        
-        const history = await WalletService.getTransactionHistory(
-          userId, 
-          parseInt(limit), 
-          (parseInt(page) - 1) * parseInt(limit)
-        );
-        res.json(history);
-      } catch (error) {
-        console.error('Transactions API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    this.expressApp.post('/api/wallet/deposit', async (req, res) => {
-      try {
-        const { userId, amount, description, proofImageUrl } = req.body;
-        
-        if (!userId || !amount || !proofImageUrl) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        
-        const result = await WalletService.deposit(
-          userId, 
-          parseFloat(amount), 
-          description || `Deposit of ${amount} BOM`,
-          proofImageUrl
-        );
-        
-        res.json({
-          success: true,
-          message: 'Deposit request submitted for verification',
-          transaction: result.transaction
-        });
-      } catch (error) {
-        console.error('Deposit API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    this.expressApp.post('/api/wallet/withdraw', async (req, res) => {
-      try {
-        const { userId, amount, method, payoutDetails } = req.body;
-        
-        if (!userId || !amount || !method || !payoutDetails) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        
-        const result = await WalletService.requestWithdrawal(
-          userId,
-          parseFloat(amount),
-          method,
-          payoutDetails
-        );
-        
-        res.json({
-          success: true,
-          message: 'Withdrawal request submitted',
-          withdrawal: result
-        });
-      } catch (error) {
-        console.error('Withdrawal API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    this.expressApp.post('/api/wallet/transfer', async (req, res) => {
-      try {
-        const { senderId, receiverId, amount, description } = req.body;
-        
-        if (!senderId || !receiverId || !amount) {
-          return res.status(400).json({ error: 'Missing required fields' });
-        }
-        
-        const result = await WalletService.transfer(
-          senderId,
-          receiverId,
-          parseFloat(amount),
-          description || `Transfer of ${amount} BOM`
-        );
-        
-        res.json({
-          success: true,
-          message: 'Transfer completed',
-          transaction: result
-        });
-      } catch (error) {
-        console.error('Transfer API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    // Subscription API endpoints
-    this.expressApp.get('/api/subscription/status', async (req, res) => {
-      try {
-        const { userId } = req.query;
-        if (!userId) {
-          return res.status(400).json({ error: 'User ID is required' });
-        }
-        
-        const tier = await SubscriptionService.getSubscriptionTier(userId);
-        const subscription = await SubscriptionService.getUserSubscription(userId);
-        
-        res.json({
-          tier,
-          subscription,
-          userId
-        });
-      } catch (error) {
-        console.error('Subscription API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    this.expressApp.post('/api/subscription/upgrade', async (req, res) => {
-      try {
-        const { userId } = req.body;
-        if (!userId) {
-          return res.status(400).json({ error: 'User ID is required' });
-        }
-        
-        const subscription = await SubscriptionService.upgradeToPremium(userId);
-        
-        res.json({
-          success: true,
-          message: 'Premium subscription activated',
-          subscription
-        });
-      } catch (error) {
-        console.error('Upgrade API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    this.expressApp.post('/api/subscription/cancel', async (req, res) => {
-      try {
-        const { userId } = req.body;
-        if (!userId) {
-          return res.status(400).json({ error: 'User ID is required' });
-        }
-        
-        const subscription = await SubscriptionService.cancelSubscription(userId);
-        
-        res.json({
-          success: true,
-          message: 'Subscription cancelled',
-          subscription
-        });
-      } catch (error) {
-        console.error('Cancel API error:', error);
-        res.status(500).json({ error: error.message });
-      }
-    });
-    
-    // Default route
     this.expressApp.get('/', (req, res) => {
+      const walletUrl = config.WALLET_URL || `${req.protocol}://${req.get('host')}/wallet`;
+      const botUrl = `https://t.me/${config.MAIN_BOT_USERNAME.replace('@', '')}`;
+      
       res.send(`
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Botomics Platform</title>
+          <title>Botomics Platform - Railway</title>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
-            h1 { color: #0088cc; }
-            .links { margin: 20px 0; }
-            a { display: inline-block; margin: 10px; padding: 10px 20px; background: #0088cc; color: white; text-decoration: none; border-radius: 5px; }
+            body { font-family: Arial, sans-serif; margin: 40px; text-align: center; background: #f5f5f5; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            h1 { color: #0088cc; margin-bottom: 10px; }
+            .status { background: #4CAF50; color: white; padding: 5px 10px; border-radius: 5px; display: inline-block; margin-bottom: 20px; }
+            .links { margin: 30px 0; }
+            a { display: inline-block; margin: 10px; padding: 12px 24px; background: #0088cc; color: white; text-decoration: none; border-radius: 5px; transition: background 0.3s; }
+            a:hover { background: #006699; }
+            .info { background: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }
+            .railway-badge { background: #0a0a0a; color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; margin-left: 10px; }
           </style>
         </head>
         <body>
-          <h1>🤖 Botomics Platform</h1>
-          <p>Telegram bot creation platform with integrated wallet system</p>
-          <div class="links">
-            <a href="/wallet">💰 Open Wallet</a>
-            <a href="https://t.me/BotomicsBot">🤖 Open Bot</a>
-            <a href="/api/wallet/health">📊 API Health</a>
+          <div class="container">
+            <h1>🤖 Botomics Platform <span class="railway-badge">Railway</span></h1>
+            <div class="status">🚀 Online & Running</div>
+            <p>Telegram bot creation platform with integrated wallet system</p>
+            
+            <div class="info">
+              <strong>Platform Status:</strong><br>
+              • Environment: ${config.NODE_ENV}<br>
+              • Database: ${config.DATABASE_URL ? 'Connected ✓' : 'Not Connected ✗'}<br>
+              • Wallet: ${walletUrl ? 'Available ✓' : 'Not Available ✗'}<br>
+              • Server Time: ${new Date().toISOString()}
+            </div>
+            
+            <div class="links">
+              <a href="${walletUrl}">💰 Open Wallet</a>
+              <a href="${botUrl}">🤖 Open Telegram Bot</a>
+              <a href="/api/health">📊 API Health Check</a>
+              <a href="https://railway.app">🚂 Railway Dashboard</a>
+            </div>
+            
+            <p>Use ${config.MAIN_BOT_USERNAME} on Telegram to access the full platform.</p>
+            <p style="font-size: 12px; color: #666; margin-top: 30px;">
+              Deployed on Railway • Node.js ${process.version} • ${process.platform}
+            </p>
           </div>
-          <p>Use @BotomicsBot on Telegram to access the full platform.</p>
         </body>
         </html>
       `);
@@ -285,20 +135,16 @@ class MetaBotCreator {
   setupHandlers() {
     console.log('🔄 Setting up bot handlers...');
     
-    // Add Mini App FIRST
     this.setupMiniApp();
     
-    // Middleware
     this.bot.use(async (ctx, next) => {
       ctx.isMainBot = true;
       ctx.miniBotManager = this;
       
-      // Skip ban check for platform admin
       if (PlatformAdminHandler.isPlatformCreator(ctx.from?.id)) {
         return next();
       }
       
-      // Check if user is banned
       if (ctx.from && await PlatformAdminHandler.checkUserBan(ctx.from.id)) {
         await ctx.reply('🚫 Your account has been banned from using this platform.');
         return;
@@ -307,13 +153,11 @@ class MetaBotCreator {
       return next();
     });
     
-    // Commands
     this.bot.start(startHandler);
     this.bot.help(helpHandler);
     this.bot.command('privacy', this.privacyHandler);
     this.bot.command('terms', this.termsHandler);
     
-    // Botomics Commands
     this.bot.command('wallet', async (ctx) => {
       await this.openWalletMiniApp(ctx);
     });
@@ -326,7 +170,6 @@ class MetaBotCreator {
       await this.openWalletMiniApp(ctx, 'premium');
     });
     
-    // Platform Admin
     this.bot.command('platform', (ctx) => {
       if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
         PlatformAdminHandler.platformDashboard(ctx);
@@ -335,12 +178,10 @@ class MetaBotCreator {
       }
     });
     
-    // Bot Management
     this.bot.command('createbot', createBotHandler);
     this.bot.command('mybots', myBotsHandler);
     this.bot.command('cancel', cancelCreationHandler);
     
-    // Admin wallet management
     this.bot.command('admin_wallet', async (ctx) => {
       if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
         await WalletHandler.handleAdminWalletDashboard(ctx);
@@ -349,7 +190,6 @@ class MetaBotCreator {
       }
     });
     
-    // Debug Commands
     this.bot.command('debug_minibots', async (ctx) => {
       try {
         await ctx.reply('🔄 Debugging mini-bots...');
@@ -386,12 +226,10 @@ class MetaBotCreator {
       }
     });
     
-    // Text handler
     this.bot.on('text', async (ctx) => {
       const userId = ctx.from.id;
       const messageText = ctx.message.text;
       
-      // Platform admin sessions
       if (PlatformAdminHandler.isInPlatformAdminSession(userId)) {
         await PlatformAdminHandler.handlePlatformAdminInput(ctx);
         return;
@@ -412,7 +250,6 @@ class MetaBotCreator {
         return;
       }
       
-      // Handle wallet and premium text commands
       if (messageText.toLowerCase() === 'wallet' || messageText === '💰 wallet') {
         await this.openWalletMiniApp(ctx);
         return;
@@ -445,10 +282,8 @@ class MetaBotCreator {
   setupMiniApp() {
     console.log('🔄 Setting up Mini App...');
     
-    // Use relative URL for Mini App
-    const walletUrl = 'https://testweb.maroset.com/wallet';
+    const walletUrl = config.WALLET_URL || `${config.APP_URL || 'https://testweb.maroset.com'}/wallet`;
     
-    // Add Mini App to menu
     this.bot.telegram.setChatMenuButton({
       menu_button: {
         type: 'web_app',
@@ -459,11 +294,10 @@ class MetaBotCreator {
     
     console.log(`✅ Mini App configured with URL: ${walletUrl}`);
     
-    // Mini App handler
     this.bot.on('web_app_data', async (ctx) => {
       try {
         const data = JSON.parse(ctx.webAppData.data);
-        console.log('📱 Mini App data received:', data);
+        console.log('📱 Mini App data received:', data.action);
         
         const userId = ctx.from.id;
         
@@ -541,10 +375,11 @@ class MetaBotCreator {
   
   async openWalletMiniApp(ctx, section = 'main') {
     try {
-      const walletUrl = `https://testweb.maroset.com/wallet${section !== 'main' ? `#${section}` : ''}`;
+      const walletUrl = config.WALLET_URL || `${config.APP_URL || 'https://testweb.maroset.com'}/wallet`;
+      const fullUrl = section !== 'main' ? `${walletUrl}#${section}` : walletUrl;
       
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.webApp('🔓 Open Botomics Wallet', walletUrl)],
+        [Markup.button.webApp('🔓 Open Botomics Wallet', fullUrl)],
         [Markup.button.callback('📋 Buy BOM Instructions', 'buy_bom_info')],
         [Markup.button.callback('📞 Support', 'contact_support')]
       ]);
@@ -574,10 +409,8 @@ class MetaBotCreator {
   setupCallbackHandlers() {
     console.log('🔄 Setting up main bot callback handlers...');
     
-    // Platform admin
     PlatformAdminHandler.registerCallbacks(this.bot);
     
-    // Basic commands
     this.bot.action('start', async (ctx) => {
       await ctx.answerCbQuery();
       await startHandler(ctx);
@@ -613,7 +446,6 @@ class MetaBotCreator {
       await this.termsHandler(ctx);
     });
     
-    // Wallet actions
     this.bot.action('open_wallet', async (ctx) => {
       await ctx.answerCbQuery();
       await this.openWalletMiniApp(ctx);
@@ -687,7 +519,6 @@ class MetaBotCreator {
   registerWalletCallbacks() {
     console.log('🔄 Registering wallet callbacks...');
     
-    // Wallet navigation
     this.bot.action('wallet_main', async (ctx) => {
       await ctx.answerCbQuery();
       await this.openWalletMiniApp(ctx);
@@ -718,7 +549,6 @@ class MetaBotCreator {
       await this.openWalletMiniApp(ctx, 'premium');
     });
     
-    // Admin wallet callbacks
     this.bot.action('admin_pending_deposits', async (ctx) => {
       if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
         await ctx.answerCbQuery('❌ Admin access required');
@@ -869,8 +699,8 @@ class MetaBotCreator {
   
   async initialize() {
     try {
-      console.log('🔄 CRITICAL: Starting MetaBot Creator initialization...');
-      console.log('🗄️ Connecting to database...');
+      console.log('🔄 Starting MetaBot Creator initialization...');
+      console.log('🗄️ Connecting to Railway PostgreSQL database...');
       await connectDB();
       console.log('✅ MetaBot Creator initialized successfully');
     } catch (error) {
@@ -879,56 +709,54 @@ class MetaBotCreator {
   }
   
   async start() {
-    console.log('🚀 Starting MetaBot Creator...');
+    console.log('🚀 Starting MetaBot Creator on Railway...');
     
     try {
-      // Start Express server for API
-      const PORT = process.env.PORT || 3000;
-      this.expressApp.listen(PORT, () => {
-        console.log(`🌐 Express server running on port ${PORT}`);
-        console.log(`📱 Wallet: http://localhost:${PORT}/wallet`);
-        console.log(`⚡ API: http://localhost:${PORT}/api/wallet/health`);
+      const PORT = config.PORT;
+      const HOST = config.HOST;
+      
+      this.expressApp.listen(PORT, HOST, () => {
+        console.log(`🌐 Express server running on ${HOST}:${PORT}`);
+        console.log(`📱 Wallet: ${config.WALLET_URL || `http://${HOST}:${PORT}/wallet`}`);
+        console.log(`⚡ API: ${config.APP_URL || `http://${HOST}:${PORT}`}/api/health`);
+        console.log(`🚀 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT || 'Production'}`);
       });
       
-      // Start mini-bots
       console.log('\n🚀 Starting mini-bots initialization...');
       const miniBotsResult = await MiniBotManager.initializeAllBots();
       console.log(`✅ ${miniBotsResult} mini-bots initialized`);
       
-      // Start main Telegram bot
       console.log('\n🤖 Starting main Telegram bot...');
       await this.bot.launch({
         dropPendingUpdates: true,
         allowedUpdates: ['message', 'callback_query', 'web_app_data']
       });
       
-      console.log('\n🎉 MetaBot Creator is now RUNNING!');
-      console.log('========================================');
+      console.log('\n🎉 MetaBot Creator is now RUNNING on Railway!');
+      console.log('===============================================');
+      console.log('🚂 Platform: Railway');
       console.log('📱 Main Bot: Manages bot creation & wallet');
       console.log('🤖 Mini-bots: Handle user messages');
       console.log('💰 Botomics: Digital currency system');
       console.log('🎫 Premium: Subscription tiers');
-      console.log('💬 Send /start to see main menu');
-      console.log('🔧 Use /createbot to create new bots');
-      console.log('📋 Use /mybots to view your bots');
-      console.log('👑 Use /platform for admin dashboard');
-      console.log('💰 Use /wallet or /premium for Mini App');
-      console.log('🔒 Legal: /privacy & /terms available');
-      console.log('🛒 Buy BOM: Contact @BotomicsSupportBot');
-      console.log('========================================');
-      console.log(`🌐 Wallet Mini App: https://testweb.maroset.com/wallet`);
+      console.log('===============================================');
+      console.log(`🌐 Dashboard: ${config.APP_URL || 'Railway URL'}`);
+      console.log(`💰 Wallet: ${config.WALLET_URL}`);
+      
+      if (config.WEBHOOK_URL) {
+        console.log(`🌐 Webhook URL: ${config.WEBHOOK_URL}`);
+      }
       
     } catch (error) {
       console.error('❌ Failed to start application:', error);
     }
     
-    // Graceful shutdown
     process.once('SIGINT', () => this.shutdown());
     process.once('SIGTERM', () => this.shutdown());
   }
   
   async shutdown() {
-    console.log('\n🛑 Shutting down gracefully...');
+    console.log('\n🛑 Shutting down gracefully on Railway...');
     
     if (this.bot) {
       await this.bot.stop();
@@ -952,11 +780,9 @@ class MetaBotCreator {
   }
 }
 
-// Start the application
 async function startApplication() {
   try {
-    console.log('🔧 Starting MetaBot Creator application...');
-    console.log('🚀 Optimized for Yegara.com cPanel deployment');
+    console.log('🔧 Starting MetaBot Creator application on Railway...');
     
     const app = new MetaBotCreator();
     await app.initialize();
@@ -965,7 +791,7 @@ async function startApplication() {
     return app;
   } catch (error) {
     console.error('❌ Application failed to start:', error);
-    process.exit(1);
+    setTimeout(() => process.exit(1), 5000);
   }
 }
 
