@@ -1,10 +1,12 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildCommand": "npm install"
   },
   "deploy": {
-    "startCommand": "node src/app.js",
-    "healthcheckPath": "/api/health",
-    "healthcheckTimeout": 30
+    "startCommand": "node debug-start.js",
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 30,
+    "startTimeout": 120
   }
 }
