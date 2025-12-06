@@ -1,43 +1,72 @@
-console.log('🔍 RAILWAY ENVIRONMENT CHECK');
-console.log('============================');
+console.log('🔍 COMPLETE VARIABLE CHECK');
+console.log('===========================');
 
-// Show all Railway-specific variables
-const railwayVars = Object.keys(process.env).filter(k => k.includes('RAILWAY'));
-console.log('Railway variables:', railwayVars);
-
-// Show our critical variables (masked)
-console.log('BOT_TOKEN:', process.env.BOT_TOKEN ? '***' + process.env.BOT_TOKEN.slice(-6) : 'NOT SET');
-console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
-console.log('ENCRYPTION_KEY:', process.env.ENCRYPTION_KEY ? 'SET' : 'NOT SET');
-console.log('PORT:', process.env.PORT || 3000);
-
-// If all variables are set, start the real app
-if (process.env.BOT_TOKEN && process.env.DATABASE_URL && process.env.ENCRYPTION_KEY) {
-  console.log('✅ All variables found! Starting main application...');
-  console.log('🚀 Launching src/app.js...');
+// Check all variables from your .env
+const checkVars = {
+  // REQUIRED - App won't start without these
+  CRITICAL: ['BOT_TOKEN', 'DATABASE_URL', 'ENCRYPTION_KEY'],
   
-  // Start the real application
+  // IMPORTANT - App will work but with defaults
+  IMPORTANT: ['MAIN_BOT_USERNAME', 'PORT', 'NODE_ENV', 'HOST', 'PLATFORM_CREATOR_ID'],
+  
+  // OPTIONAL - Features might not work
+  OPTIONAL: ['MAX_BOTS_PER_USER', 'ENABLE_WALLET_SYSTEM', 'ENABLE_PREMIUM_SUBSCRIPTIONS',
+             'BOTOMICS_PREMIUM_PRICE', 'BOTOMICS_MIN_WITHDRAWAL']
+};
+
+// Check Railway's DATABASE_PUBLIC_URL
+if (process.env.DATABASE_PUBLIC_URL && !process.env.DATABASE_URL) {
+  console.log('📝 DATABASE_PUBLIC_URL found but DATABASE_URL missing');
+  console.log('   Using DATABASE_PUBLIC_URL as DATABASE_URL');
+  process.env.DATABASE_URL = process.env.DATABASE_PUBLIC_URL;
+}
+
+// Log all variables
+Object.entries(checkVars).forEach(([category, vars]) => {
+  console.log(`\n${category} VARIABLES:`);
+  vars.forEach(varName => {
+    const value = process.env[varName];
+    console.log(`  ${varName}: ${value ? '✅ SET' : '❌ NOT SET'}`);
+  });
+});
+
+// Check Railway auto variables
+console.log('\nRAILWAY AUTO VARIABLES:');
+console.log('  RAILWAY_STATIC_URL:', process.env.RAILWAY_STATIC_URL || 'NOT SET');
+console.log('  DATABASE_PUBLIC_URL:', process.env.DATABASE_PUBLIC_URL || 'NOT SET');
+
+// Build WALLET_URL and APP_URL from Railway
+if (process.env.RAILWAY_STATIC_URL) {
+  if (!process.env.WALLET_URL) {
+    process.env.WALLET_URL = `${process.env.RAILWAY_STATIC_URL}/wallet`;
+    console.log('📝 Auto-setting WALLET_URL:', process.env.WALLET_URL);
+  }
+  if (!process.env.APP_URL) {
+    process.env.APP_URL = process.env.RAILWAY_STATIC_URL;
+    console.log('📝 Auto-setting APP_URL:', process.env.APP_URL);
+  }
+}
+
+// Check if we can start
+const missingCritical = checkVars.CRITICAL.filter(v => !process.env[v]);
+if (missingCritical.length === 0) {
+  console.log('\n✅ All critical variables found! Starting main app...');
   require('./src/app.js');
 } else {
-  console.log('❌ Missing variables! Running debug server only...');
+  console.log('\n❌ Missing critical variables:', missingCritical);
+  console.log('💡 Add these in Railway Dashboard → Variables');
   
-  // Debug server for Railway healthcheck
+  // Keep debug server running
   const http = require('http');
-  const server = http.createServer((req, res) => {
+  http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'debug_mode',
-      message: 'Running in debug mode - missing environment variables',
-      variables: {
-        BOT_TOKEN: !!process.env.BOT_TOKEN,
-        DATABASE_URL: !!process.env.DATABASE_URL,
-        ENCRYPTION_KEY: !!process.env.ENCRYPTION_KEY
-      },
-      help: 'Set variables in Railway Dashboard → Variables'
+      missing: missingCritical,
+      all_vars: Object.keys(process.env).sort(),
+      help: 'Add missing variables in Railway Dashboard'
     }));
-  });
-  
-  server.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+  }).listen(process.env.PORT || 3000, '0.0.0.0', () => {
     console.log(`🔧 Debug server running on port ${process.env.PORT || 3000}`);
   });
 }
