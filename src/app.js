@@ -1,16 +1,53 @@
-﻿// src/app.js - COMPLETE RAILWAY DEPLOYMENT VERSION WITH WALLET INTEGRATION
-if (process.env.NODE_ENV !== 'production') {
+﻿
+// ALWAYS load dotenv first (won't hurt if file doesn't exist)
+try {
   require('dotenv').config();
-  console.log('🔧 Development mode - Loading .env file');
-} else {
-  console.log('🚀 Production mode - Using Railway environment variables');
+} catch (e) {
+  console.log('📝 No .env file found, using environment variables only');
 }
 
+console.log('🔍 DEBUGGING STARTUP ON RAILWAY');
+console.log('================================');
+console.log('📋 Environment check:');
+console.log('   NODE_ENV:', process.env.NODE_ENV);
+console.log('   PORT:', process.env.PORT);
+console.log('   HOST:', process.env.HOST);
+console.log('   RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
+console.log('   DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+console.log('   BOT_TOKEN:', process.env.BOT_TOKEN ? 'SET' : 'NOT SET');
+
+// Check for required variables IMMEDIATELY
+const requiredVars = ['BOT_TOKEN', 'DATABASE_URL', 'ENCRYPTION_KEY'];
+const missingVars = requiredVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingVars);
+  console.error('💡 How to fix on Railway:');
+  console.error('   1. Go to Railway Dashboard → Your Project → Variables');
+  console.error('   2. Add the missing environment variables');
+  console.error('   3. Redeploy your application');
+  process.exit(1);
+}
+
+console.log('✅ All required environment variables found!');
+
+// Now load dependencies
 const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const config = require('../config/environment');
+
+// Create config AFTER environment check
+const createConfig = require('../config/environment');
+const config = createConfig();
+
+console.log('🚀 Starting main app...');
+console.log('🚀 Production mode - Using Railway environment variables');
+console.log('🔧 Loading environment configuration...');
+console.log('   Environment:', config.NODE_ENV);
+console.log('   Platform:', config.IS_RAILWAY ? 'Railway 🚂' : 'Local');
+console.log('   Port:', config.PORT);
+console.log('✅ Running on Railway.com deployment');
 const { connectDB } = require('../database/db');
 const MiniBotManager = require('./services/MiniBotManager');
 
