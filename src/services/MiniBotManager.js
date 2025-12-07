@@ -810,7 +810,7 @@ class MiniBotManager {
           `• Pin start messages\n` +
           `• Unlimited features\n` +
           `• Ad-free experience\n\n` +
-          `*Price:* 5 BOM per month ($5.00)`,
+          `*Price:* 3 BOM per month ($3.00)`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
@@ -904,7 +904,7 @@ class MiniBotManager {
           `• Enable donation system\n` +
           `• Receive BOM donations\n` +
           `• All premium features\n\n` +
-          `*Price:* 5 BOM per month ($5.00)`,
+          `*Price:* 3 BOM per month ($3.00)`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
@@ -1012,7 +1012,7 @@ class MiniBotManager {
           `• Enable donation system\n` +
           `• Receive BOM donations\n` +
           `• All premium features\n\n` +
-          `*Price:* 5 BOM per month ($5.00)`,
+          `*Price:* 3 BOM per month ($3.00)`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([

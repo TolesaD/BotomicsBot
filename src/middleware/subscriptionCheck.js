@@ -16,7 +16,7 @@ class SubscriptionMiddleware {
             `• ${this.getFeatureDescription(feature)}\n` +
             `• All premium features\n` +
             `• Ad-free experience\n\n` +
-            `*Price:* 5 BOM per month ($5.00)`,
+            `*Price:* 3 BOM per month ($3.00)`,
             {
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([

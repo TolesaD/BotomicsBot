@@ -707,7 +707,7 @@ static async startAddChannel(ctx, botId) {
         `• Unlimited force join channels\n` +
         `• Advanced bot features\n` +
         `• Priority support\n\n` +
-        `*Monthly Price:* 5 BOM\n\n` +
+        `*Monthly Price:* 3 BOM\n\n` +
         `Contact @admin to upgrade your account.`,
         { parse_mode: 'Markdown' }
       );
