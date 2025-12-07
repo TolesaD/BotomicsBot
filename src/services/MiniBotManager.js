@@ -1,4 +1,4 @@
-// src/services/MiniBotManager.js - COMPLETE BOTOMICS UPGRADE
+// src/services/MiniBotManager.js - COMPLETE FIXED VERSION
 const { Telegraf, Markup } = require('telegraf');
 const { Bot, UserLog, Feedback, Admin, User, BroadcastHistory } = require('../models');
 const ReferralHandler = require('../handlers/referralHandler');
@@ -80,9 +80,6 @@ class MiniBotManager {
         });
         
         console.log(`✅ Database updated for native edit from user ${user.id}`);
-        
-        // REMOVED: Admin notifications for edits as requested
-        // No longer notifying admins about message edits
         
       } else {
         console.log(`❌ Original message not found in database for native edit`);
@@ -639,7 +636,11 @@ class MiniBotManager {
     bot.action(/^reply_(.+)/, (ctx) => this.handleReplyAction(ctx));
     bot.action(/^admin_(.+)/, (ctx) => this.handleAdminAction(ctx));
     bot.action(/^remove_admin_(.+)/, (ctx) => this.handleRemoveAdminAction(ctx));
-    bot.action(/^settings_(.+)/, (ctx) => this.handleSettingsAction(ctx));
+    
+    // ==================== FIXED: SETTINGS ACTION HANDLER ====================
+    bot.action(/^settings_(.+)/, async (ctx) => {
+      await this.handleSettingsAction(ctx);
+    });
     
     // BOTOMICS ACTION HANDLERS
     bot.action(/^settings_pin_message/, async (ctx) => {
@@ -784,6 +785,200 @@ class MiniBotManager {
     });
     
     console.log('✅ Bot handlers setup complete with all Botomics features');
+  };
+
+  // ==================== FIXED: ADD MISSING SETTINGS ACTION HANDLER ====================
+
+  handleSettingsAction = async (ctx) => {
+    try {
+      const action = ctx.match[1];
+      const { metaBotInfo } = ctx;
+      const user = ctx.from;
+      
+      await ctx.answerCbQuery();
+      
+      const isOwner = await this.checkOwnerAccess(metaBotInfo.mainBotId, user.id);
+      if (!isOwner) {
+        await ctx.reply('❌ Only bot owner can change settings.');
+        return;
+      }
+      
+      switch (action) {
+        case 'welcome':
+          await this.startChangeWelcomeMessage(ctx, metaBotInfo.mainBotId);
+          break;
+        case 'reset_welcome':
+          await this.resetWelcomeMessage(ctx, metaBotInfo.mainBotId);
+          break;
+        case 'channels':
+          await ChannelJoinHandler.showChannelManagement(ctx, metaBotInfo.mainBotId);
+          break;
+        case 'referral':
+          await ReferralHandler.showReferralManagement(ctx, metaBotInfo.mainBotId);
+          break;
+        default:
+          await ctx.reply('⚠️ Action not available');
+      }
+    } catch (error) {
+      console.error('Settings action error:', error);
+      await ctx.reply('❌ Error processing settings action');
+    }
+  };
+
+  // ==================== FIXED: START CHANGE WELCOME MESSAGE METHOD ====================
+
+  startChangeWelcomeMessage = async (ctx, botId) => {
+    try {
+      this.welcomeMessageSessions.set(ctx.from.id, {
+        botId: botId,
+        step: 'awaiting_welcome_message'
+      });
+      
+      const bot = await Bot.findByPk(botId);
+      const botRef = this.getBotReference();
+      const currentMessage = bot.welcome_message || `👋 Welcome to *${bot.bot_name}*!\n\nWe are here to assist you with any questions or concerns you may have.\n\nSimply send us a message, and we'll respond as quickly as possible!\n\n_This Bot is created by @${botRef.username}_`;
+      
+      await ctx.reply(
+        `✏️ *Change Welcome Message*\n\n` +
+        `*Current Message:*\n${currentMessage}\n\n` +
+        `Please send the new welcome message:\n\n` +
+        `*Tips:*\n` +
+        `• Use {botName} as placeholder for bot name\n` +
+        `• Markdown formatting is supported\n` +
+        `• Keep it welcoming and informative\n` +
+        `• Creator credit will be automatically added\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Start change welcome message error:', error);
+      await ctx.reply('❌ Error starting welcome message change.');
+    }
+  };
+
+  // ==================== FIXED: RESET WELCOME MESSAGE METHOD ====================
+
+  resetWelcomeMessage = async (ctx, botId) => {
+    try {
+      const bot = await Bot.findByPk(botId);
+      await bot.update({ welcome_message: null });
+      
+      const successMsg = await ctx.reply('✅ Welcome message reset to default.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      await this.showSettings(ctx, botId);
+      
+    } catch (error) {
+      console.error('Reset welcome message error:', error);
+      await ctx.reply('❌ Error resetting welcome message.');
+    }
+  };
+
+  // ==================== FIXED: BROADCAST SESSION HANDLING ====================
+
+  sendBroadcastWithConfirmation = async (ctx, botId, message) => {
+    try {
+      const userId = ctx.from.id;
+      
+      // Store broadcast data FIRST
+      this.broadcastSessions.set(userId, {
+        botId: botId,
+        message: message,
+        step: 'awaiting_confirmation'
+      });
+      
+      // Step 1: Show confirmation
+      const confirmationMessage = await ctx.reply(
+        `⚠️ *Broadcast Confirmation*\n\n` +
+        `*Message Preview:*\n` +
+        `${message.substring(0, 200)}${message.length > 200 ? '...' : ''}\n\n` +
+        `*Are you sure you want to send this broadcast to all users?*\n\n` +
+        `This action cannot be undone.`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Yes, Send Broadcast', `confirm_broadcast_${botId}`)],
+            [Markup.button.callback('❌ Cancel', `cancel_broadcast_${botId}`)]
+          ])
+        }
+      );
+      
+      // Update session with confirmation message ID
+      const session = this.broadcastSessions.get(userId);
+      session.confirmationMessageId = confirmationMessage.message_id;
+      this.broadcastSessions.set(userId, session);
+      
+    } catch (error) {
+      console.error('Send broadcast confirmation error:', error);
+      await ctx.reply('❌ Error preparing broadcast.');
+    }
+  };
+
+  // Handle broadcast confirmation - FIXED: Proper session handling
+  handleBroadcastConfirmation = async (ctx, botId) => {
+    try {
+      const userId = ctx.from.id;
+      const session = this.broadcastSessions.get(userId);
+      
+      if (!session || session.step !== 'awaiting_confirmation' || parseInt(session.botId) !== parseInt(botId)) {
+        await ctx.answerCbQuery('❌ No broadcast session found');
+        return;
+      }
+      
+      await ctx.answerCbQuery('📢 Starting broadcast...');
+      
+      // Delete confirmation message if possible
+      if (session.confirmationMessageId) {
+        try {
+          await ctx.deleteMessage(session.confirmationMessageId);
+        } catch (error) {
+          console.log('Confirmation message already deleted');
+        }
+      }
+      
+      // Start actual broadcast
+      await this.processBroadcastSend(ctx, botId, session.message);
+      
+      // Clear session
+      this.broadcastSessions.delete(userId);
+      
+    } catch (error) {
+      console.error('Broadcast confirmation error:', error);
+      await ctx.answerCbQuery('❌ Error processing broadcast');
+    }
+  };
+
+  // Handle broadcast cancellation - FIXED: Proper session handling
+  handleBroadcastCancellation = async (ctx, botId) => {
+    try {
+      const userId = ctx.from.id;
+      const session = this.broadcastSessions.get(userId);
+      
+      if (!session || parseInt(session.botId) !== parseInt(botId)) {
+        await ctx.answerCbQuery('❌ No broadcast to cancel');
+        return;
+      }
+      
+      // Delete confirmation message if possible
+      if (session.confirmationMessageId) {
+        try {
+          await ctx.deleteMessage(session.confirmationMessageId);
+        } catch (error) {
+          console.log('Confirmation message already deleted');
+        }
+      }
+      
+      // Clear session
+      this.broadcastSessions.delete(userId);
+      
+      await ctx.answerCbQuery('❌ Broadcast cancelled');
+      await ctx.reply('❌ Broadcast cancelled.');
+      
+    } catch (error) {
+      console.error('Broadcast cancellation error:', error);
+      await ctx.answerCbQuery('❌ Error cancelling broadcast');
+    }
   };
 
   // ==================== BOTOMICS FEATURES IMPLEMENTATION ====================
@@ -1621,104 +1816,6 @@ class MiniBotManager {
     }
   };
 
-  // ==================== FIXED BROADCAST SYSTEM WITH CONFIRMATION ====================
-
-  // Send broadcast with confirmation step
-  sendBroadcastWithConfirmation = async (ctx, botId, message) => {
-    try {
-      const userId = ctx.from.id;
-      
-      // Step 1: Show confirmation
-      const confirmationMessage = await ctx.reply(
-        `⚠️ *Broadcast Confirmation*\n\n` +
-        `*Message Preview:*\n` +
-        `${message.substring(0, 200)}${message.length > 200 ? '...' : ''}\n\n` +
-        `*Are you sure you want to send this broadcast to all users?*\n\n` +
-        `This action cannot be undone.`,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Yes, Send Broadcast', `confirm_broadcast_${botId}`)],
-            [Markup.button.callback('❌ Cancel', `cancel_broadcast_${botId}`)]
-          ])
-        }
-      );
-      
-      // Store broadcast data for confirmation
-      this.broadcastSessions.set(userId, {
-        botId: botId,
-        message: message,
-        confirmationMessageId: confirmationMessage.message_id,
-        step: 'awaiting_confirmation'
-      });
-      
-    } catch (error) {
-      console.error('Send broadcast confirmation error:', error);
-      await ctx.reply('❌ Error preparing broadcast.');
-    }
-  };
-
-  // Handle broadcast confirmation
-  handleBroadcastConfirmation = async (ctx, botId) => {
-    try {
-      const userId = ctx.from.id;
-      const session = this.broadcastSessions.get(userId);
-      
-      if (!session || session.step !== 'awaiting_confirmation') {
-        await ctx.answerCbQuery('❌ No broadcast session found');
-        return;
-      }
-      
-      await ctx.answerCbQuery('📢 Starting broadcast...');
-      
-      // Delete confirmation message
-      try {
-        await ctx.deleteMessage(session.confirmationMessageId);
-      } catch (error) {
-        console.log('Confirmation message already deleted');
-      }
-      
-      // Start actual broadcast
-      await this.processBroadcastSend(ctx, botId, session.message);
-      
-      // Clear session
-      this.broadcastSessions.delete(userId);
-      
-    } catch (error) {
-      console.error('Broadcast confirmation error:', error);
-      await ctx.answerCbQuery('❌ Error processing broadcast');
-    }
-  };
-
-  // Handle broadcast cancellation
-  handleBroadcastCancellation = async (ctx, botId) => {
-    try {
-      const userId = ctx.from.id;
-      const session = this.broadcastSessions.get(userId);
-      
-      if (!session) {
-        await ctx.answerCbQuery('❌ No broadcast to cancel');
-        return;
-      }
-      
-      // Delete confirmation message
-      try {
-        await ctx.deleteMessage(session.confirmationMessageId);
-      } catch (error) {
-        console.log('Confirmation message already deleted');
-      }
-      
-      // Clear session
-      this.broadcastSessions.delete(userId);
-      
-      await ctx.reply('❌ Broadcast cancelled.');
-      
-    } catch (error) {
-      console.error('Broadcast cancellation error:', error);
-      await ctx.answerCbQuery('❌ Error cancelling broadcast');
-    }
-  };
-
   // Enhanced broadcast processing with cancellation support
   processBroadcastSend = async (ctx, botId, message) => {
     try {
@@ -1882,7 +1979,7 @@ class MiniBotManager {
       // Find the ongoing broadcast for this user
       let broadcastId = null;
       for (const [id, broadcast] of this.ongoingBroadcasts.entries()) {
-        if (broadcast.userId === userId && broadcast.botId === parseInt(botId)) {
+        if (broadcast.userId === userId && parseInt(broadcast.botId) === parseInt(botId)) {
           broadcastId = id;
           break;
         }
@@ -2320,109 +2417,6 @@ class MiniBotManager {
     }
   };
 
-  // ... [All other existing methods remain the same - they are already included in your original file]
-  // I've kept all the existing methods as they were, only adding the fixes mentioned above
-  
-  // Session management methods for referral and currency
-  startReferralSettingSession = async (ctx, botId, settingType) => {
-    try {
-      this.referralSessions.set(ctx.from.id, {
-        botId: botId,
-        settingType: settingType,
-        step: 'awaiting_referral_setting'
-      });
-      
-      let promptMessage = '';
-      switch (settingType) {
-        case 'rate':
-          promptMessage = '💰 *Set Referral Rate*\n\nPlease enter the new referral rate (percentage):\n\n*Example:* 10 for 10%\n\n*Cancel:* Type /cancel';
-          break;
-        case 'min_withdrawal':
-          promptMessage = '💰 *Set Minimum Withdrawal*\n\nPlease enter the new minimum withdrawal amount:\n\n*Example:* 100\n\n*Cancel:* Type /cancel';
-          break;
-        default:
-          promptMessage = '💰 *Change Referral Setting*\n\nPlease enter the new value:\n\n*Cancel:* Type /cancel';
-      }
-      
-      await ctx.reply(promptMessage, { parse_mode: 'Markdown' });
-      
-    } catch (error) {
-      console.error('Start referral setting session error:', error);
-      await ctx.reply('❌ Error starting referral setting session.');
-    }
-  };
-  
-  startCurrencySettingSession = async (ctx, botId) => {
-    try {
-      this.currencySessions.set(ctx.from.id, {
-        botId: botId,
-        step: 'awaiting_currency_input'
-      });
-      
-      await ctx.reply(
-        '💰 *Set Custom Currency*\n\n' +
-        'Please enter your custom currency code (3-5 characters):\n\n' +
-        '*Examples:* USD, EUR, BTC, ETH, COIN\n\n' +
-        '*Cancel:* Type /cancel',
-        { parse_mode: 'Markdown' }
-      );
-      
-    } catch (error) {
-      console.error('Start currency setting session error:', error);
-      await ctx.reply('❌ Error starting currency setting session.');
-    }
-  };
-
-  processWelcomeMessageChange = async (ctx, botId, newMessage) => {
-    try {
-      const bot = await Bot.findByPk(botId);
-      await bot.update({ welcome_message: newMessage });
-      
-      const successMsg = await ctx.reply('✅ Welcome message updated successfully!');
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-      await this.showSettings(ctx, botId);
-      
-    } catch (error) {
-      console.error('Process welcome message change error:', error);
-      await ctx.reply('❌ Error updating welcome message.');
-    }
-  };
-  
-  handleUserMessage = async (ctx, metaBotInfo, user, message) => {
-    try {
-      await UserLog.upsert({
-        bot_id: metaBotInfo.mainBotId,
-        user_id: user.id,
-        user_username: user.username,
-        user_first_name: user.first_name,
-        last_interaction: new Date()
-      });
-      
-      const feedback = await Feedback.create({
-        bot_id: metaBotInfo.mainBotId,
-        user_id: user.id,
-        user_username: user.username,
-        user_first_name: user.first_name,
-        message: message,
-        message_id: ctx.message.message_id,
-        message_type: 'text'
-      });
-      
-      // Enhanced message delivery to admins
-      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'text', ctx.message);
-      
-      const successMsg = await ctx.reply('✅ Your message has been received.');
-      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
-      
-      console.log(`📨 New message from ${user.first_name} to ${metaBotInfo.botName}`);
-      
-    } catch (error) {
-      console.error('User message handler error:', error);
-      await ctx.reply('❌ Sorry, there was an error sending your message. Please try again.');
-    }
-  };
-  
   handleMiniAction = async (ctx) => {
     try {
       const action = ctx.match[1];
@@ -3436,6 +3430,106 @@ class MiniBotManager {
         await ctx.reply('❌ Sorry, there was an error sending your media. Please try again.');
       }
     };
+
+  // Session management methods for referral and currency
+  startReferralSettingSession = async (ctx, botId, settingType) => {
+    try {
+      this.referralSessions.set(ctx.from.id, {
+        botId: botId,
+        settingType: settingType,
+        step: 'awaiting_referral_setting'
+      });
+      
+      let promptMessage = '';
+      switch (settingType) {
+        case 'rate':
+          promptMessage = '💰 *Set Referral Rate*\n\nPlease enter the new referral rate (percentage):\n\n*Example:* 10 for 10%\n\n*Cancel:* Type /cancel';
+          break;
+        case 'min_withdrawal':
+          promptMessage = '💰 *Set Minimum Withdrawal*\n\nPlease enter the new minimum withdrawal amount:\n\n*Example:* 100\n\n*Cancel:* Type /cancel';
+          break;
+        default:
+          promptMessage = '💰 *Change Referral Setting*\n\nPlease enter the new value:\n\n*Cancel:* Type /cancel';
+      }
+      
+      await ctx.reply(promptMessage, { parse_mode: 'Markdown' });
+      
+    } catch (error) {
+      console.error('Start referral setting session error:', error);
+      await ctx.reply('❌ Error starting referral setting session.');
+    }
+  };
+  
+  startCurrencySettingSession = async (ctx, botId) => {
+    try {
+      this.currencySessions.set(ctx.from.id, {
+        botId: botId,
+        step: 'awaiting_currency_input'
+      });
+      
+      await ctx.reply(
+        '💰 *Set Custom Currency*\n\n' +
+        'Please enter your custom currency code (3-5 characters):\n\n' +
+        '*Examples:* USD, EUR, BTC, ETH, COIN\n\n' +
+        '*Cancel:* Type /cancel',
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('Start currency setting session error:', error);
+      await ctx.reply('❌ Error starting currency setting session.');
+    }
+  };
+
+  processWelcomeMessageChange = async (ctx, botId, newMessage) => {
+    try {
+      const bot = await Bot.findByPk(botId);
+      await bot.update({ welcome_message: newMessage });
+      
+      const successMsg = await ctx.reply('✅ Welcome message updated successfully!');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      await this.showSettings(ctx, botId);
+      
+    } catch (error) {
+      console.error('Process welcome message change error:', error);
+      await ctx.reply('❌ Error updating welcome message.');
+    }
+  };
+  
+  handleUserMessage = async (ctx, metaBotInfo, user, message) => {
+    try {
+      await UserLog.upsert({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        last_interaction: new Date()
+      });
+      
+      const feedback = await Feedback.create({
+        bot_id: metaBotInfo.mainBotId,
+        user_id: user.id,
+        user_username: user.username,
+        user_first_name: user.first_name,
+        message: message,
+        message_id: ctx.message.message_id,
+        message_type: 'text'
+      });
+      
+      // Enhanced message delivery to admins
+      await this.notifyAdminsRealTime(metaBotInfo.mainBotId, feedback, user, 'text', ctx.message);
+      
+      const successMsg = await ctx.reply('✅ Your message has been received.');
+      await this.deleteAfterDelay(ctx, successMsg.message_id, 5000);
+      
+      console.log(`📨 New message from ${user.first_name} to ${metaBotInfo.botName}`);
+      
+    } catch (error) {
+      console.error('User message handler error:', error);
+      await ctx.reply('❌ Sorry, there was an error sending your message. Please try again.');
+    }
+  };
 }
 
 module.exports = new MiniBotManager();

@@ -1,3 +1,4 @@
+// /src/handlers/referralHandler.js - FIXED VERSION
 const { Markup } = require('telegraf');
 const { Bot, ReferralProgram, Referral, Withdrawal, User, UserLog, ChannelJoin } = require('../models');
 
@@ -779,7 +780,7 @@ static async processCurrencySetting(ctx, botId, input) {
         },
         include: [{
           model: User,
-          as: 'ReferredUser',
+          as: 'ReferredUser', // Use the correct alias
           attributes: ['username', 'first_name']
         }],
         order: [['created_at', 'DESC']],

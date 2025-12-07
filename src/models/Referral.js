@@ -45,7 +45,7 @@ const Referral = sequelize.define('Referral', {
   }
 }, {
   tableName: 'referrals',
-  timestamps: false,
+  timestamps: true, // Changed from false to true for automatic createdAt/updatedAt
   indexes: [
     {
       fields: ['bot_id', 'referrer_id']
@@ -58,5 +58,22 @@ const Referral = sequelize.define('Referral', {
     }
   ]
 });
+
+// Make sure associations are correctly defined
+Referral.associate = (models) => {
+  Referral.belongsTo(models.User, {
+    foreignKey: 'referrer_id',
+    as: 'ReferrerUser'
+  });
+  
+  Referral.belongsTo(models.User, {
+    foreignKey: 'referred_id',
+    as: 'ReferredUser' // This alias should match what we use in ReferralHandler
+  });
+  
+  Referral.belongsTo(models.Bot, {
+    foreignKey: 'bot_id'
+  });
+};
 
 module.exports = Referral;
