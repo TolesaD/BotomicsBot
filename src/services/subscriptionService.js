@@ -1,469 +1,749 @@
-const { UserSubscription, User, WalletService, Bot, BroadcastHistory, BotAdSettings } = require('../models');
-const { Op } = require('sequelize');
-const sequelize = require('../../database/db').sequelize;
+// src/services/subscriptionService.js - COMPLETE PRODUCTION VERSION
+const { UserSubscription, User, Wallet, WalletTransaction, BroadcastHistory } = require('../models');
+const WalletService = require('./walletService');
+const Sequelize = require('sequelize');
 
 class SubscriptionService {
-  async getUserSubscription(userId) {
-    return await UserSubscription.findOne({
-      where: { 
-        user_id: userId,
-        status: 'active'
-      },
-      order: [['created_at', 'DESC']]
-    });
-  }
-  
-  async getSubscriptionTier(userId) {
-    const subscription = await this.getUserSubscription(userId);
     
-    if (subscription && subscription.tier === 'premium') {
-      // Check if subscription is still valid
-      if (new Date() < new Date(subscription.current_period_end)) {
-        return 'premium';
-      } else {
-        // Subscription expired, downgrade to freemium
-        await subscription.update({ status: 'expired' });
-        await User.update(
-          { premium_status: 'freemium' },
-          { where: { telegram_id: userId } }
-        );
-        return 'freemium';
-      }
-    }
-    
-    return 'freemium';
-  }
-  
-  async upgradeToPremium(userId) {
-    const currentTier = await this.getSubscriptionTier(userId);
-    
-    if (currentTier === 'premium') {
-      throw new Error('User is already on premium tier.');
-    }
-    
-    // Check wallet balance (5 BOM per month)
-    const walletBalance = await WalletService.getBalance(userId);
-    if (walletBalance.balance < 5) {
-      throw new Error('Insufficient BOM balance. Need 5 BOM for premium subscription.');
-    }
-    
-    if (walletBalance.isFrozen) {
-      throw new Error('Wallet is frozen. Cannot upgrade subscription.');
-    }
-    
-    const transaction = await sequelize.transaction();
-    
-    try {
-      const now = new Date();
-      const periodEnd = new Date(now);
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-      
-      // Create subscription
-      const subscription = await UserSubscription.create({
-        user_id: userId,
-        tier: 'premium',
-        status: 'active',
-        monthly_price: 5.00,
-        currency: 'BOM',
-        current_period_start: now,
-        current_period_end: periodEnd,
-        auto_renew: true
-      }, { transaction });
-      
-      // Deduct from wallet
-      await WalletService.withdraw(
-        userId, 
-        5, 
-        'Monthly premium subscription',
-        { subscription_id: subscription.id }
-      );
-      
-      // Update user record
-      await User.update(
-        { 
-          premium_status: 'premium',
-          premium_expires_at: periodEnd
-        },
-        { 
-          where: { telegram_id: userId },
-          transaction 
-        }
-      );
-      
-      await transaction.commit();
-      
-      console.log(`🎫 User ${userId} upgraded to premium subscription`);
-      
-      return subscription;
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  }
-  
-  async cancelSubscription(userId) {
-    const subscription = await this.getUserSubscription(userId);
-    
-    if (!subscription || subscription.tier !== 'premium') {
-      throw new Error('No active premium subscription found.');
-    }
-    
-    await subscription.update({
-      status: 'cancelled',
-      auto_renew: false,
-      cancelled_at: new Date()
-    });
-    
-    await User.update(
-      { premium_status: 'freemium' },
-      { where: { telegram_id: userId } }
-    );
-    
-    console.log(`❌ User ${userId} cancelled premium subscription`);
-    
-    return subscription;
-  }
-  
-  async processSubscriptionPayment(userId) {
-    const subscription = await this.getUserSubscription(userId);
-    
-    if (!subscription || subscription.tier !== 'premium') {
-      throw new Error('No active premium subscription.');
-    }
-    
-    // Check if it's time for renewal
-    const now = new Date();
-    if (now < new Date(subscription.current_period_end)) {
-      throw new Error('Subscription not due for renewal yet.');
-    }
-    
-    const walletBalance = await WalletService.getBalance(userId);
-    
-    if (walletBalance.balance < subscription.monthly_price) {
-      // Insufficient funds - cancel subscription
-      await this.cancelSubscription(userId);
-      throw new Error('Insufficient funds for subscription renewal. Subscription cancelled.');
-    }
-    
-    if (walletBalance.isFrozen) {
-      throw new Error('Wallet is frozen. Cannot process subscription payment.');
-    }
-    
-    const transaction = await sequelize.transaction();
-    
-    try {
-      // Process payment
-      await WalletService.withdraw(
-        userId,
-        subscription.monthly_price,
-        `Monthly premium subscription renewal`,
-        { subscription_id: subscription.id }
-      );
-      
-      // Update subscription dates
-      const newPeriodStart = new Date(subscription.current_period_end);
-      const newPeriodEnd = new Date(newPeriodStart);
-      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
-      
-      await subscription.update({
-        current_period_start: newPeriodStart,
-        current_period_end: newPeriodEnd,
-        last_payment_date: now,
-        payment_count: (subscription.payment_count || 0) + 1
-      }, { transaction });
-      
-      await User.update(
-        { premium_expires_at: newPeriodEnd },
-        { 
-          where: { telegram_id: userId },
-          transaction 
-        }
-      );
-      
-      await transaction.commit();
-      
-      console.log(`🔄 Subscription renewed for user ${userId}`);
-      
-      return subscription;
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  }
-  
-  async checkFeatureAccess(userId, feature) {
-    const tier = await this.getSubscriptionTier(userId);
-    
-    const featureLimits = {
-      bot_creation: {
-        freemium: 5,
-        premium: 9999
-      },
-      broadcasts_per_week: {
-        freemium: 3,
-        premium: 9999
-      },
-      co_admins: {
-        freemium: 1,
-        premium: 9999
-      },
-      force_join_channels: {
-        freemium: 1,
-        premium: 9999
-      },
-      donation_system: {
-        freemium: false,
-        premium: true
-      },
-      pin_messages: {
-        freemium: false,
-        premium: true
-      },
-      remove_ads: {
-        freemium: false,
-        premium: true
-      },
-      custom_welcome_message: {
-        freemium: false,
-        premium: true
-      },
-      advanced_analytics: {
-        freemium: false,
-        premium: true
-      },
-      api_access: {
-        freemium: false,
-        premium: true
-      }
-    };
-    
-    return featureLimits[feature] ? featureLimits[feature][tier] : null;
-  }
-
-  async getWeeklyBroadcastCount(userId, botId) {
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    
-    const broadcastCount = await BroadcastHistory.count({
-      where: {
-        bot_id: botId,
-        sent_by: userId,
-        created_at: {
-          [Op.gte]: oneWeekAgo
-        }
-      }
-    });
-    
-    return broadcastCount;
-  }
-
-  async canUserBroadcast(userId, botId) {
-    const weeklyLimit = await this.checkFeatureAccess(userId, 'broadcasts_per_week');
-    const currentCount = await this.getWeeklyBroadcastCount(userId, botId);
-    
-    return {
-      canBroadcast: currentCount < weeklyLimit,
-      currentCount,
-      weeklyLimit,
-      remaining: weeklyLimit - currentCount
-    };
-  }
-
-  async getUserBotCount(userId) {
-    return await Bot.count({ where: { owner_id: userId } });
-  }
-
-  async canUserCreateBot(userId) {
-    const botLimit = await this.checkFeatureAccess(userId, 'bot_creation');
-    const currentCount = await this.getUserBotCount(userId);
-    
-    return {
-      canCreate: currentCount < botLimit,
-      currentCount,
-      botLimit,
-      remaining: botLimit - currentCount
-    };
-  }
-  
-  async getUserAdStatus(userId, botId) {
-    const tier = await this.getSubscriptionTier(userId);
-    
-    if (tier === 'premium') {
-      return { canEnableAds: true, reason: 'Premium user' };
-    }
-    
-    // For freemium users, check if they have ads enabled (they shouldn't)
-    const adSettings = await BotAdSettings.findOne({ where: { bot_id: botId } });
-    if (adSettings && adSettings.is_ad_enabled) {
-      return { 
-        canEnableAds: false, 
-        reason: 'Upgrade to premium to enable ad system'
-      };
-    }
-    
-    return { canEnableAds: false, reason: 'Premium feature only' };
-  }
-  
-  async processAutoRenewals() {
-    const now = new Date();
-    const expiringSubscriptions = await UserSubscription.findAll({
-      where: {
-        status: 'active',
-        auto_renew: true,
-        current_period_end: {
-          [Op.lt]: new Date(now.getTime() + 24 * 60 * 60 * 1000) // Within next 24 hours
-        }
-      }
-    });
-    
-    const results = {
-      renewed: 0,
-      failed: 0,
-      cancelled: 0,
-      errors: []
-    };
-    
-    for (const subscription of expiringSubscriptions) {
-      try {
-        const walletBalance = await WalletService.getBalance(subscription.user_id);
-        
-        if (walletBalance.balance >= subscription.monthly_price && !walletBalance.isFrozen) {
-          // Process renewal
-          await this.processSubscriptionPayment(subscription.user_id);
-          results.renewed++;
-          
-        } else {
-          // Insufficient funds or frozen wallet, cancel subscription
-          await this.cancelSubscription(subscription.user_id);
-          results.cancelled++;
-          
-          // Notify user
-          try {
-            const user = await User.findOne({ where: { telegram_id: subscription.user_id } });
-            if (user) {
-              // This would be sent via bot in production
-              console.log(`⚠️ Subscription cancelled for user ${subscription.user_id} due to insufficient funds`);
+    // Get user's subscription tier
+    static async getSubscriptionTier(userId) {
+        try {
+            // Check for active premium subscription
+            const activeSubscription = await UserSubscription.findOne({
+                where: {
+                    user_id: userId,
+                    status: 'active',
+                    current_period_end: {
+                        [Sequelize.Op.gt]: new Date()
+                    }
+                }
+            });
+            
+            if (activeSubscription && activeSubscription.tier === 'premium') {
+                return 'premium';
             }
-          } catch (notifyError) {
-            console.error('Failed to notify user:', notifyError);
-          }
+            
+            return 'freemium';
+        } catch (error) {
+            console.error('Get subscription tier error:', error);
+            return 'freemium'; // Default to freemium on error
         }
-      } catch (error) {
-        results.errors.push({
-          subscription_id: subscription.id,
-          user_id: subscription.user_id,
-          error: error.message
-        });
-        results.failed++;
-      }
     }
     
-    return results;
-  }
-  
-  async getSubscriptionStats() {
-    const totalSubscriptions = await UserSubscription.count();
-    const activeSubscriptions = await UserSubscription.count({ 
-      where: { status: 'active', tier: 'premium' } 
-    });
-    const freemiumUsers = await User.count({ where: { premium_status: 'freemium' } });
-    const premiumUsers = await User.count({ where: { premium_status: 'premium' } });
-    
-    const monthlyRevenue = await UserSubscription.sum('monthly_price', {
-      where: { 
-        status: 'active',
-        tier: 'premium'
-      }
-    }) || 0;
-    
-    const estimatedAnnualRevenue = monthlyRevenue * 12;
-    
-    return {
-      totalSubscriptions,
-      activeSubscriptions,
-      freemiumUsers,
-      premiumUsers,
-      monthlyRevenue: parseFloat(monthlyRevenue),
-      estimatedAnnualRevenue: parseFloat(estimatedAnnualRevenue),
-      conversionRate: premiumUsers / (freemiumUsers + premiumUsers) * 100
-    };
-  }
-  
-  async forceUpdateSubscription(userId, tier, adminId, notes = '') {
-    const user = await User.findOne({ where: { telegram_id: userId } });
-    
-    if (!user) {
-      throw new Error('User not found.');
-    }
-    
-    const transaction = await sequelize.transaction();
-    
-    try {
-      // Cancel any existing subscription
-      await UserSubscription.update(
-        { status: 'cancelled' },
-        { 
-          where: { user_id: userId, status: 'active' },
-          transaction 
+    // Get user subscription details
+    static async getUserSubscription(userId) {
+        try {
+            const subscription = await UserSubscription.findOne({
+                where: { user_id: userId },
+                order: [['created_at', 'DESC']]
+            });
+            
+            return subscription;
+        } catch (error) {
+            console.error('Get user subscription error:', error);
+            return null;
         }
-      );
-      
-      if (tier === 'premium') {
-        // Create new premium subscription
-        const now = new Date();
-        const periodEnd = new Date(now);
-        periodEnd.setMonth(periodEnd.getMonth() + 1);
-        
-        await UserSubscription.create({
-          user_id: userId,
-          tier: 'premium',
-          status: 'active',
-          monthly_price: 5.00,
-          currency: 'BOM',
-          current_period_start: now,
-          current_period_end: periodEnd,
-          auto_renew: false, // Manual admin upgrade
-          metadata: {
-            admin_upgrade: true,
-            admin_id: adminId,
-            notes: notes,
-            timestamp: new Date()
-          }
-        }, { transaction });
-        
-        await User.update(
-          { 
-            premium_status: 'premium',
-            premium_expires_at: periodEnd
-          },
-          { 
-            where: { telegram_id: userId },
-            transaction 
-          }
-        );
-        
-        console.log(`🔧 Admin ${adminId} forced premium subscription for user ${userId}`);
-        
-      } else {
-        // Downgrade to freemium
-        await User.update(
-          { premium_status: 'freemium' },
-          { 
-            where: { telegram_id: userId },
-            transaction 
-          }
-        );
-        
-        console.log(`🔧 Admin ${adminId} downgraded user ${userId} to freemium`);
-      }
-      
-      await transaction.commit();
-      return true;
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
     }
-  }
+    
+    // Upgrade user to premium
+    static async upgradeToPremium(userId) {
+        const transaction = await UserSubscription.sequelize.transaction();
+        
+        try {
+            // Check wallet balance (3 BOM for monthly)
+            const wallet = await Wallet.findOne({ 
+                where: { user_id: userId },
+                transaction
+            });
+            
+            if (!wallet) {
+                throw new Error('Wallet not found. Please create a wallet first.');
+            }
+            
+            if (parseFloat(wallet.balance) < 3) {
+                throw new Error('Insufficient balance. Need 3 BOM for premium subscription.');
+            }
+            
+            // Check if already has active premium
+            const existingActive = await UserSubscription.findOne({
+                where: {
+                    user_id: userId,
+                    status: 'active',
+                    current_period_end: {
+                        [Sequelize.Op.gt]: new Date()
+                    }
+                },
+                transaction
+            });
+            
+            if (existingActive && existingActive.tier === 'premium') {
+                throw new Error('You already have an active premium subscription.');
+            }
+            
+            // Deduct 3 BOM from wallet
+            const newBalance = parseFloat(wallet.balance) - 3;
+            await wallet.update({
+                balance: newBalance
+            }, { transaction });
+            
+            // Calculate dates
+            const now = new Date();
+            const periodEnd = new Date(now);
+            periodEnd.setMonth(periodEnd.getMonth() + 1);
+            
+            // Cancel any existing subscriptions
+            await UserSubscription.update(
+                { status: 'cancelled', cancelled_at: now },
+                {
+                    where: {
+                        user_id: userId,
+                        status: 'active'
+                    },
+                    transaction
+                }
+            );
+            
+            // Create new subscription
+            const subscription = await UserSubscription.create({
+                user_id: userId,
+                tier: 'premium',
+                status: 'active',
+                monthly_price: 3.00,
+                currency: 'BOM',
+                current_period_start: now,
+                current_period_end: periodEnd,
+                auto_renew: true
+            }, { transaction });
+            
+            // Update user record
+            await User.update(
+                {
+                    premium_status: 'premium',
+                    premium_expires_at: periodEnd,
+                    premium_started_at: now
+                },
+                {
+                    where: { telegram_id: userId },
+                    transaction
+                }
+            );
+            
+            // Create subscription transaction
+            await WalletTransaction.create({
+                wallet_id: wallet.id,
+                type: 'subscription',
+                amount: -3,
+                currency: 'BOM',
+                description: 'Monthly premium subscription',
+                status: 'completed',
+                metadata: {
+                    subscription_id: subscription.id,
+                    period: 'monthly',
+                    period_start: now.toISOString(),
+                    period_end: periodEnd.toISOString()
+                }
+            }, { transaction });
+            
+            await transaction.commit();
+            
+            return subscription;
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Upgrade to premium error:', error);
+            throw error;
+        }
+    }
+    
+    // Cancel subscription
+    static async cancelSubscription(userId) {
+        const transaction = await UserSubscription.sequelize.transaction();
+        
+        try {
+            const activeSubscription = await UserSubscription.findOne({
+                where: {
+                    user_id: userId,
+                    status: 'active'
+                },
+                transaction
+            });
+            
+            if (!activeSubscription) {
+                throw new Error('No active subscription found');
+            }
+            
+            // Update subscription
+            await activeSubscription.update({
+                status: 'cancelled',
+                auto_renew: false,
+                cancelled_at: new Date()
+            }, { transaction });
+            
+            // Update user record (keep premium until period end)
+            await User.update(
+                { premium_status: 'cancelled' },
+                {
+                    where: { telegram_id: userId },
+                    transaction
+                }
+            );
+            
+            await transaction.commit();
+            
+            return activeSubscription;
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Cancel subscription error:', error);
+            throw error;
+        }
+    }
+    
+    // Process auto-renewals
+    static async processAutoRenewals() {
+        try {
+            console.log('🔄 Processing subscription auto-renewals...');
+            
+            const today = new Date();
+            const subscriptions = await UserSubscription.findAll({
+                where: {
+                    status: 'active',
+                    auto_renew: true,
+                    current_period_end: {
+                        [Sequelize.Op.lt]: today
+                    }
+                }
+            });
+            
+            let renewedCount = 0;
+            let failedCount = 0;
+            
+            for (const subscription of subscriptions) {
+                try {
+                    await this.renewSubscription(subscription);
+                    renewedCount++;
+                } catch (error) {
+                    console.error(`Failed to renew subscription ${subscription.id}:`, error.message);
+                    
+                    // Mark subscription as expired
+                    await subscription.update({
+                        status: 'expired',
+                        auto_renew: false
+                    });
+                    
+                    // Update user to freemium
+                    await User.update(
+                        { premium_status: 'freemium' },
+                        { where: { telegram_id: subscription.user_id } }
+                    );
+                    
+                    failedCount++;
+                }
+            }
+            
+            console.log(`✅ Auto-renewals completed. Renewed: ${renewedCount}, Failed: ${failedCount}`);
+            
+            return { renewedCount, failedCount };
+            
+        } catch (error) {
+            console.error('Process auto-renewals error:', error);
+            throw error;
+        }
+    }
+    
+    // Renew a single subscription
+    static async renewSubscription(subscription) {
+        const transaction = await UserSubscription.sequelize.transaction();
+        
+        try {
+            const wallet = await Wallet.findOne({ 
+                where: { user_id: subscription.user_id },
+                transaction
+            });
+            
+            if (!wallet) {
+                throw new Error('Wallet not found');
+            }
+            
+            if (parseFloat(wallet.balance) < subscription.monthly_price) {
+                throw new Error('Insufficient balance for renewal');
+            }
+            
+            // Deduct from wallet
+            const newBalance = parseFloat(wallet.balance) - subscription.monthly_price;
+            await wallet.update({
+                balance: newBalance
+            }, { transaction });
+            
+            // Calculate new period
+            const now = new Date();
+            const periodEnd = new Date(now);
+            periodEnd.setMonth(periodEnd.getMonth() + 1);
+            
+            // Update subscription
+            await subscription.update({
+                current_period_start: now,
+                current_period_end: periodEnd
+            }, { transaction });
+            
+            // Update user record
+            await User.update(
+                {
+                    premium_status: 'premium',
+                    premium_expires_at: periodEnd
+                },
+                {
+                    where: { telegram_id: subscription.user_id },
+                    transaction
+                }
+            );
+            
+            // Create renewal transaction
+            await WalletTransaction.create({
+                wallet_id: wallet.id,
+                type: 'subscription',
+                amount: -subscription.monthly_price,
+                currency: subscription.currency,
+                description: 'Monthly premium subscription renewal',
+                status: 'completed',
+                metadata: {
+                    subscription_id: subscription.id,
+                    renewal: true,
+                    period_start: now.toISOString(),
+                    period_end: periodEnd.toISOString()
+                }
+            }, { transaction });
+            
+            await transaction.commit();
+            
+            return subscription;
+            
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
+    
+    // Get subscription statistics (admin)
+    static async getSubscriptionStats() {
+        try {
+            const [
+                totalSubscriptions,
+                activeSubscriptions,
+                cancelledSubscriptions,
+                totalUsers,
+                premiumUsers,
+                totalRevenue
+            ] = await Promise.all([
+                UserSubscription.count(),
+                UserSubscription.count({
+                    where: {
+                        status: 'active',
+                        current_period_end: {
+                            [Sequelize.Op.gt]: new Date()
+                        }
+                    }
+                }),
+                UserSubscription.count({ where: { status: 'cancelled' } }),
+                User.count(),
+                User.count({ where: { premium_status: 'premium' } }),
+                WalletTransaction.sum('amount', {
+                    where: {
+                        type: 'subscription',
+                        status: 'completed'
+                    }
+                })
+            ]);
+            
+            const freemiumUsers = totalUsers - premiumUsers;
+            const monthlyRevenue = Math.abs(totalRevenue || 0) / (totalSubscriptions || 1) * activeSubscriptions;
+            const estimatedAnnualRevenue = monthlyRevenue * 12;
+            const conversionRate = totalUsers > 0 ? (premiumUsers / totalUsers) * 100 : 0;
+            
+            return {
+                totalSubscriptions,
+                activeSubscriptions,
+                cancelledSubscriptions,
+                freemiumUsers,
+                premiumUsers,
+                monthlyRevenue,
+                estimatedAnnualRevenue,
+                conversionRate: parseFloat(conversionRate.toFixed(1))
+            };
+        } catch (error) {
+            console.error('Get subscription stats error:', error);
+            throw error;
+        }
+    }
+    
+    // Force update subscription (admin only)
+    static async forceUpdateSubscription(userId, tier, adminId, reason) {
+        const transaction = await UserSubscription.sequelize.transaction();
+        
+        try {
+            const now = new Date();
+            let periodEnd;
+            
+            if (tier === 'premium') {
+                periodEnd = new Date(now);
+                periodEnd.setMonth(periodEnd.getMonth() + 1);
+                
+                // Cancel any existing subscriptions
+                await UserSubscription.update(
+                    { status: 'cancelled', cancelled_at: now },
+                    {
+                        where: {
+                            user_id: userId,
+                            status: 'active'
+                        },
+                        transaction
+                    }
+                );
+                
+                // Create new subscription
+                await UserSubscription.create({
+                    user_id: userId,
+                    tier: 'premium',
+                    status: 'active',
+                    monthly_price: 3.00,
+                    currency: 'BOM',
+                    current_period_start: now,
+                    current_period_end: periodEnd,
+                    auto_renew: false,
+                    metadata: {
+                        admin_granted: true,
+                        admin_id: adminId,
+                        reason: reason
+                    }
+                }, { transaction });
+                
+                // Update user
+                await User.update(
+                    {
+                        premium_status: 'premium',
+                        premium_expires_at: periodEnd,
+                        premium_started_at: now
+                    },
+                    {
+                        where: { telegram_id: userId },
+                        transaction
+                    }
+                );
+                
+            } else {
+                // Downgrade to freemium
+                await UserSubscription.update(
+                    {
+                        status: 'cancelled',
+                        cancelled_at: now,
+                        auto_renew: false
+                    },
+                    {
+                        where: {
+                            user_id: userId,
+                            status: 'active'
+                        },
+                        transaction
+                    }
+                );
+                
+                await User.update(
+                    { premium_status: 'freemium' },
+                    {
+                        where: { telegram_id: userId },
+                        transaction
+                    }
+                );
+            }
+            
+            await transaction.commit();
+            
+            return {
+                success: true,
+                userId: userId,
+                tier: tier,
+                adminId: adminId,
+                reason: reason,
+                timestamp: now.toISOString()
+            };
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Force update subscription error:', error);
+            throw error;
+        }
+    }
+
+    // ==================== FIXED: BROADCAST LIMIT METHODS ====================
+
+    // Get weekly broadcast count - FIXED: Use sent_at instead of created_at
+    static async getWeeklyBroadcastCount(userId, botId) {
+        try {
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            
+            const count = await BroadcastHistory.count({
+                where: {
+                    bot_id: botId,
+                    sent_by: userId,
+                    sent_at: {  // CHANGED: Use sent_at instead of created_at
+                        [Sequelize.Op.gte]: oneWeekAgo
+                    }
+                }
+            });
+            
+            return count;
+        } catch (error) {
+            console.error('Get weekly broadcast count error:', error);
+            return 0;
+        }
+    }
+
+    // Check if user can broadcast - FIXED: Use getWeeklyBroadcastCount
+    static async canUserBroadcast(userId, botId) {
+        try {
+            const subscriptionTier = await this.getSubscriptionTier(userId);
+            const weeklyLimit = subscriptionTier === 'premium' ? 999999 : 3; // Unlimited for premium
+            
+            const currentCount = await this.getWeeklyBroadcastCount(userId, botId);
+            const canBroadcast = currentCount < weeklyLimit;
+            const remaining = weeklyLimit - currentCount;
+            
+            return {
+                canBroadcast: canBroadcast,
+                currentCount: currentCount,
+                weeklyLimit: weeklyLimit,
+                remaining: remaining > 0 ? remaining : 0,
+                isPremium: subscriptionTier === 'premium'
+            };
+        } catch (error) {
+            console.error('Can user broadcast error:', error);
+            // Default to allowing broadcast on error
+            return {
+                canBroadcast: true,
+                currentCount: 0,
+                weeklyLimit: 3,
+                remaining: 3,
+                isPremium: false
+            };
+        }
+    }
+
+    // Check feature access
+    static async checkFeatureAccess(userId, feature) {
+        try {
+            const tier = await this.getSubscriptionTier(userId);
+            
+            if (tier === 'premium') {
+                return true; // Premium users have access to all features
+            }
+            
+            // Freemium feature limitations
+            const freemiumLimits = {
+                'pin_messages': false,
+                'donation_system': false,
+                'remove_ads': false,
+                'unlimited_broadcasts': false,
+                'advanced_analytics': false
+            };
+            
+            return freemiumLimits[feature] || false;
+        } catch (error) {
+            console.error('Check feature access error:', error);
+            return false;
+        }
+    }
+
+    // Get user's feature status
+    static async getUserFeatures(userId) {
+        try {
+            const tier = await this.getSubscriptionTier(userId);
+            const isPremium = tier === 'premium';
+            
+            return {
+                tier: tier,
+                isPremium: isPremium,
+                features: {
+                    pin_messages: isPremium,
+                    donation_system: isPremium,
+                    remove_ads: isPremium,
+                    unlimited_broadcasts: isPremium,
+                    advanced_analytics: isPremium,
+                    basic_broadcasts: true, // Everyone gets basic broadcasts
+                    referral_program: true,
+                    channel_management: true
+                },
+                limits: {
+                    weekly_broadcasts: isPremium ? 'Unlimited' : '3 per week',
+                    max_bots: isPremium ? 'Unlimited' : '5 bots',
+                    storage: isPremium ? 'Unlimited' : '100MB'
+                }
+            };
+        } catch (error) {
+            console.error('Get user features error:', error);
+            return {
+                tier: 'freemium',
+                isPremium: false,
+                features: {
+                    pin_messages: false,
+                    donation_system: false,
+                    remove_ads: false,
+                    unlimited_broadcasts: false,
+                    advanced_analytics: false,
+                    basic_broadcasts: true,
+                    referral_program: true,
+                    channel_management: true
+                },
+                limits: {
+                    weekly_broadcasts: '3 per week',
+                    max_bots: '5 bots',
+                    storage: '100MB'
+                }
+            };
+        }
+    }
+
+    // Get subscription expiration info
+    static async getSubscriptionExpiration(userId) {
+        try {
+            const subscription = await UserSubscription.findOne({
+                where: {
+                    user_id: userId,
+                    status: 'active',
+                    current_period_end: {
+                        [Sequelize.Op.gt]: new Date()
+                    }
+                }
+            });
+            
+            if (!subscription) {
+                return {
+                    hasActive: false,
+                    expiresIn: null,
+                    expiresAt: null,
+                    autoRenew: false
+                };
+            }
+            
+            const now = new Date();
+            const expiresAt = subscription.current_period_end;
+            const expiresIn = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)); // Days
+            
+            return {
+                hasActive: true,
+                tier: subscription.tier,
+                expiresIn: expiresIn,
+                expiresAt: expiresAt,
+                autoRenew: subscription.auto_renew,
+                monthlyPrice: subscription.monthly_price,
+                currency: subscription.currency
+            };
+        } catch (error) {
+            console.error('Get subscription expiration error:', error);
+            return {
+                hasActive: false,
+                expiresIn: null,
+                expiresAt: null,
+                autoRenew: false
+            };
+        }
+    }
+
+    // Update subscription auto-renew setting
+    static async updateAutoRenew(userId, autoRenew) {
+        try {
+            const subscription = await UserSubscription.findOne({
+                where: {
+                    user_id: userId,
+                    status: 'active'
+                }
+            });
+            
+            if (!subscription) {
+                throw new Error('No active subscription found');
+            }
+            
+            await subscription.update({
+                auto_renew: autoRenew
+            });
+            
+            return {
+                success: true,
+                autoRenew: autoRenew,
+                updatedAt: new Date()
+            };
+        } catch (error) {
+            console.error('Update auto-renew error:', error);
+            throw error;
+        }
+    }
+
+    // Get all active subscriptions (admin)
+    static async getAllActiveSubscriptions() {
+        try {
+            const subscriptions = await UserSubscription.findAll({
+                where: {
+                    status: 'active',
+                    current_period_end: {
+                        [Sequelize.Op.gt]: new Date()
+                    }
+                },
+                include: [{
+                    model: User,
+                    attributes: ['telegram_id', 'username', 'first_name', 'premium_status']
+                }],
+                order: [['current_period_end', 'ASC']]
+            });
+            
+            return subscriptions.map(sub => ({
+                id: sub.id,
+                userId: sub.user_id,
+                tier: sub.tier,
+                username: sub.User?.username || `User#${sub.user_id}`,
+                firstName: sub.User?.first_name || 'Unknown',
+                monthlyPrice: sub.monthly_price,
+                currency: sub.currency,
+                periodStart: sub.current_period_start,
+                periodEnd: sub.current_period_end,
+                autoRenew: sub.auto_renew,
+                daysRemaining: Math.ceil((sub.current_period_end - new Date()) / (1000 * 60 * 60 * 24))
+            }));
+        } catch (error) {
+            console.error('Get all active subscriptions error:', error);
+            return [];
+        }
+    }
+
+    // Process subscription webhook (for future payment integrations)
+    static async processWebhook(webhookData) {
+        try {
+            // This is a placeholder for future payment gateway integration
+            console.log('Webhook received:', webhookData);
+            
+            // Example structure for future implementation:
+            // {
+            //   event: 'payment.succeeded',
+            //   userId: '123456789',
+            //   amount: 3.00,
+            //   currency: 'BOM',
+            //   transactionId: 'txn_123456',
+            //   timestamp: '2025-12-07T10:00:00Z'
+            // }
+            
+            return {
+                processed: true,
+                message: 'Webhook processed successfully',
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Process webhook error:', error);
+            return {
+                processed: false,
+                error: error.message,
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
 }
 
-module.exports = new SubscriptionService();
+module.exports = SubscriptionService;

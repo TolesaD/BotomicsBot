@@ -4,7 +4,7 @@
     "buildCommand": "npm install"
   },
   "deploy": {
-    "startCommand": "node debug-start.js",
+    "startCommand": "node src/app.js",
     "healthcheckPath": "/",
     "healthcheckTimeout": 30,
     "startTimeout": 120

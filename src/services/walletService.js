@@ -1,592 +1,681 @@
-const { Op } = require('sequelize');
-const { Wallet, WalletTransaction, User, Withdrawal } = require('../models');
-const sequelize = require('../../database/db').sequelize;
+// src/services/walletService.js - COMPLETE PRODUCTION VERSION
+const { Wallet, WalletTransaction, User, Withdrawal, UserSubscription } = require('../models');
+const Sequelize = require('sequelize');
+const Op = Sequelize.Op;
 
 class WalletService {
-  async getOrCreateWallet(userId) {
-    let wallet = await Wallet.findOne({ where: { user_id: userId } });
     
-    if (!wallet) {
-      // Create user record if not exists
-      const user = await User.findOne({ where: { telegram_id: userId } });
-      if (!user) {
-        await User.create({
-          telegram_id: userId,
-          first_name: `User_${userId}`,
-          username: null,
-          is_bot: false
-        });
-      }
-      
-      wallet = await Wallet.create({
-        user_id: userId,
-        balance: 0.00,
-        currency: 'BOM',
-        is_frozen: false
-      });
-      console.log(`💰 Created new wallet for user ${userId}`);
-    }
-    
-    return wallet;
-  }
-  
-  async getBalance(userId) {
-    const wallet = await this.getOrCreateWallet(userId);
-    return {
-      balance: parseFloat(wallet.balance),
-      currency: wallet.currency,
-      isFrozen: wallet.is_frozen,
-      freezeReason: wallet.freeze_reason
-    };
-  }
-  
-  async deposit(userId, amount, description = 'Deposit', proofImage = null, metadata = {}) {
-    const wallet = await this.getOrCreateWallet(userId);
-    
-    if (wallet.is_frozen) {
-      throw new Error('Wallet is frozen. Cannot process deposit.');
-    }
-    
-    if (amount <= 0) {
-      throw new Error('Deposit amount must be positive.');
-    }
-    
-    const transaction = await sequelize.transaction();
-    
-    try {
-      const walletTransaction = await WalletTransaction.create({
-        wallet_id: wallet.id,
-        type: 'deposit',
-        amount: amount,
-        currency: 'BOM',
-        description: description,
-        metadata: { ...metadata, proof_image: proofImage },
-        status: 'pending', // Will be marked completed after admin verification
-        proof_image_url: proofImage
-      }, { transaction });
-      
-      console.log(`💰 Deposit request created for user ${userId}: ${amount} BOM`);
-      
-      await transaction.commit();
-      
-      return {
-        transaction: walletTransaction,
-        newBalance: parseFloat(wallet.balance)
-      };
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  }
-  
-  async confirmDeposit(transactionId, adminId) {
-    const transaction = await WalletTransaction.findByPk(transactionId);
-    
-    if (!transaction || transaction.type !== 'deposit' || transaction.status !== 'pending') {
-      throw new Error('Invalid deposit transaction.');
-    }
-    
-    const wallet = await Wallet.findByPk(transaction.wallet_id);
-    
-    if (wallet.is_frozen) {
-      throw new Error('Wallet is frozen. Cannot confirm deposit.');
-    }
-    
-    const dbTransaction = await sequelize.transaction();
-    
-    try {
-      // Update transaction status
-      await transaction.update({
-        status: 'completed',
-        metadata: { 
-          ...transaction.metadata,
-          confirmed_by: adminId,
-          confirmed_at: new Date()
+    // Get wallet balance for user
+    static async getBalance(userId) {
+        try {
+            let wallet = await Wallet.findOne({ where: { user_id: userId } });
+            
+            if (!wallet) {
+                // Create wallet if it doesn't exist
+                wallet = await Wallet.create({
+                    user_id: userId,
+                    balance: 0.00,
+                    currency: 'BOM',
+                    is_frozen: false
+                });
+            }
+            
+            return {
+                userId: userId,
+                balance: parseFloat(wallet.balance),
+                currency: wallet.currency,
+                isFrozen: wallet.is_frozen,
+                freezeReason: wallet.freeze_reason,
+                walletAddress: `BOTOMICS_${userId}`,
+                createdAt: wallet.created_at
+            };
+        } catch (error) {
+            console.error('Get balance error:', error);
+            throw new Error('Failed to get wallet balance');
         }
-      }, { transaction: dbTransaction });
-      
-      // Update wallet balance
-      await wallet.increment('balance', { 
-        by: transaction.amount,
-        transaction: dbTransaction 
-      });
-      
-      await dbTransaction.commit();
-      
-      console.log(`✅ Deposit confirmed: ${transaction.amount} BOM to user ${wallet.user_id}`);
-      
-      return {
-        transaction,
-        newBalance: parseFloat(wallet.balance) + parseFloat(transaction.amount)
-      };
-    } catch (error) {
-      await dbTransaction.rollback();
-      throw error;
-    }
-  }
-  
-  async rejectDeposit(transactionId, adminId, reason) {
-    const transaction = await WalletTransaction.findByPk(transactionId);
-    
-    if (!transaction || transaction.type !== 'deposit' || transaction.status !== 'pending') {
-      throw new Error('Invalid deposit transaction.');
     }
     
-    await transaction.update({
-      status: 'failed',
-      metadata: { 
-        ...transaction.metadata,
-        rejected_by: adminId,
-        rejected_at: new Date(),
-        rejection_reason: reason
-      }
-    });
-    
-    console.log(`❌ Deposit rejected for transaction ${transactionId}: ${reason}`);
-    
-    return transaction;
-  }
-  
-  async requestWithdrawal(userId, amount, method, payoutDetails) {
-    const wallet = await this.getOrCreateWallet(userId);
-    
-    if (wallet.is_frozen) {
-      throw new Error('Wallet is frozen. Cannot process withdrawal.');
-    }
-    
-    if (amount < 20) {
-      throw new Error('Minimum withdrawal amount is 20 BOM.');
-    }
-    
-    if (parseFloat(wallet.balance) < amount) {
-      throw new Error('Insufficient balance for withdrawal.');
-    }
-    
-    const usdValue = amount * 1; // 1 BOM = $1.00 USD
-    
-    const withdrawal = await sequelize.transaction(async (t) => {
-      // Create withdrawal request
-      const withdrawal = await Withdrawal.create({
-        user_id: userId,
-        telegram_id: userId,
-        amount: amount,
-        currency: 'BOM',
-        usd_value: usdValue,
-        method: method,
-        payout_details: payoutDetails,
-        status: 'pending'
-      }, { transaction: t });
-      
-      // Create transaction record
-      await WalletTransaction.create({
-        wallet_id: wallet.id,
-        type: 'withdrawal',
-        amount: -amount,
-        currency: 'BOM',
-        description: `Withdrawal request #${withdrawal.id} via ${method}`,
-        status: 'pending',
-        metadata: { withdrawal_id: withdrawal.id }
-      }, { transaction: t });
-      
-      // Reserve the amount
-      await wallet.decrement('balance', { 
-        by: amount,
-        transaction: t 
-      });
-      
-      return withdrawal;
-    });
-    
-    console.log(`📤 Withdrawal request created for user ${userId}: ${amount} BOM via ${method}`);
-    
-    return withdrawal;
-  }
-  
-  async processWithdrawal(withdrawalId, adminId, action, notes = null) {
-    const withdrawal = await Withdrawal.findByPk(withdrawalId);
-    
-    if (!withdrawal || withdrawal.status !== 'pending') {
-      throw new Error('Invalid withdrawal request.');
-    }
-    
-    const wallet = await Wallet.findOne({ where: { user_id: withdrawal.user_id } });
-    
-    if (!wallet) {
-      throw new Error('Wallet not found.');
-    }
-    
-    const transaction = await sequelize.transaction();
-    
-    try {
-      if (action === 'approve') {
-        // Approve withdrawal
-        await withdrawal.update({
-          status: 'processing',
-          processed_by: adminId,
-          admin_notes: notes,
-          processed_at: new Date()
-        }, { transaction });
+    // Process deposit request
+    static async deposit(userId, amount, description, proofImageUrl) {
+        const transaction = await WalletTransaction.sequelize.transaction();
         
-        // Update transaction status
-        await WalletTransaction.update({
-          status: 'completed',
-          metadata: { 
-            processed_by: adminId,
-            processed_at: new Date()
-          }
-        }, {
-          where: {
-            wallet_id: wallet.id,
-            type: 'withdrawal',
-            status: 'pending',
-            metadata: { withdrawal_id: withdrawalId }
-          },
-          transaction
-        });
-        
-        console.log(`✅ Withdrawal ${withdrawalId} approved by admin ${adminId}`);
-        
-      } else if (action === 'reject') {
-        // Reject withdrawal
-        await withdrawal.update({
-          status: 'rejected',
-          processed_by: adminId,
-          rejection_reason: notes,
-          processed_at: new Date()
-        }, { transaction });
-        
-        // Update transaction status
-        await WalletTransaction.update({
-          status: 'failed',
-          metadata: { 
-            rejected_by: adminId,
-            rejection_reason: notes,
-            rejected_at: new Date()
-          }
-        }, {
-          where: {
-            wallet_id: wallet.id,
-            type: 'withdrawal',
-            status: 'pending',
-            metadata: { withdrawal_id: withdrawalId }
-          },
-          transaction
-        });
-        
-        // Return reserved amount to wallet
-        await wallet.increment('balance', { 
-          by: withdrawal.amount,
-          transaction 
-        });
-        
-        console.log(`❌ Withdrawal ${withdrawalId} rejected by admin ${adminId}`);
-        
-      } else if (action === 'complete') {
-        // Mark as completed
-        await withdrawal.update({
-          status: 'completed',
-          processed_by: adminId,
-          admin_notes: notes,
-          processed_at: new Date()
-        }, { transaction });
-        
-        console.log(`🎉 Withdrawal ${withdrawalId} marked as completed by admin ${adminId}`);
-      }
-      
-      await transaction.commit();
-      return withdrawal;
-      
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  }
-  
-  async transfer(senderId, receiverId, amount, description = 'Transfer') {
-    const senderWallet = await this.getOrCreateWallet(senderId);
-    const receiverWallet = await this.getOrCreateWallet(receiverId);
-    
-    if (senderWallet.is_frozen || receiverWallet.is_frozen) {
-      throw new Error('One of the wallets is frozen. Cannot process transfer.');
-    }
-    
-    if (parseFloat(senderWallet.balance) < amount) {
-      throw new Error('Insufficient balance for transfer.');
-    }
-    
-    if (amount <= 0) {
-      throw new Error('Transfer amount must be positive.');
-    }
-    
-    const transaction = await sequelize.transaction();
-    
-    try {
-      // Create transactions for both parties
-      const senderTransaction = await WalletTransaction.create({
-        wallet_id: senderWallet.id,
-        type: 'transfer',
-        amount: -amount,
-        currency: 'BOM',
-        description: `Transfer to user ${receiverId}: ${description}`,
-        metadata: { receiver_id: receiverId },
-        status: 'completed'
-      }, { transaction });
-      
-      const receiverTransaction = await WalletTransaction.create({
-        wallet_id: receiverWallet.id,
-        type: 'transfer',
-        amount: amount,
-        currency: 'BOM',
-        description: `Transfer from user ${senderId}: ${description}`,
-        metadata: { sender_id: senderId },
-        status: 'completed'
-      }, { transaction });
-      
-      // Update balances
-      await senderWallet.decrement('balance', { by: amount, transaction });
-      await receiverWallet.increment('balance', { by: amount, transaction });
-      
-      await transaction.commit();
-      
-      console.log(`💰 Transferred ${amount} BOM from ${senderId} to ${receiverId}`);
-      
-      return {
-        senderTransaction,
-        receiverTransaction,
-        senderNewBalance: parseFloat(senderWallet.balance) - amount,
-        receiverNewBalance: parseFloat(receiverWallet.balance) + amount
-      };
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  }
-  
-  async getTransactionHistory(userId, limit = 10, offset = 0) {
-    const wallet = await this.getOrCreateWallet(userId);
-    
-    const { count, rows } = await WalletTransaction.findAndCountAll({
-      where: { wallet_id: wallet.id },
-      order: [['created_at', 'DESC']],
-      limit: limit,
-      offset: offset
-    });
-    
-    return {
-      transactions: rows.map(tx => ({
-        id: tx.id,
-        type: tx.type,
-        amount: parseFloat(tx.amount),
-        currency: tx.currency,
-        description: tx.description,
-        status: tx.status,
-        created_at: tx.created_at,
-        metadata: tx.metadata
-      })),
-      pagination: {
-        total: count,
-        limit,
-        offset,
-        hasMore: offset + limit < count,
-        totalPages: Math.ceil(count / limit),
-        currentPage: Math.floor(offset / limit) + 1
-      }
-    };
-  }
-  
-  async freezeWallet(userId, reason = 'Policy violation', adminId = null) {
-    const wallet = await this.getOrCreateWallet(userId);
-    
-    const transaction = await sequelize.transaction();
-    
-    try {
-      await wallet.update({
-        is_frozen: true,
-        freeze_reason: reason
-      }, { transaction });
-      
-      // Create audit transaction
-      await WalletTransaction.create({
-        wallet_id: wallet.id,
-        type: 'admin_adjustment',
-        amount: 0,
-        currency: 'BOM',
-        description: `Wallet frozen: ${reason}`,
-        status: 'completed',
-        metadata: { 
-          action: 'freeze',
-          reason: reason,
-          admin_id: adminId,
-          timestamp: new Date()
+        try {
+            let wallet = await Wallet.findOne({ 
+                where: { user_id: userId },
+                transaction
+            });
+            
+            if (!wallet) {
+                wallet = await Wallet.create({
+                    user_id: userId,
+                    balance: 0.00,
+                    currency: 'BOM',
+                    is_frozen: false
+                }, { transaction });
+            }
+            
+            if (wallet.is_frozen) {
+                throw new Error('Wallet is frozen. Cannot process deposit.');
+            }
+            
+            // Create pending deposit transaction
+            const depositTransaction = await WalletTransaction.create({
+                wallet_id: wallet.id,
+                type: 'deposit',
+                amount: amount,
+                currency: 'BOM',
+                description: description,
+                status: 'pending',
+                metadata: {
+                    proof_image: proofImageUrl,
+                    approved_by: null,
+                    approved_at: null
+                }
+            }, { transaction });
+            
+            await transaction.commit();
+            
+            return {
+                success: true,
+                transaction: depositTransaction,
+                walletId: wallet.id
+            };
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Deposit error:', error);
+            throw error;
         }
-      }, { transaction });
-      
-      await transaction.commit();
-      
-      console.log(`❄️ Frozen wallet for user ${userId}: ${reason}`);
-      
-      return wallet;
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
     }
-  }
-  
-  async unfreezeWallet(userId, adminId = null) {
-    const wallet = await this.getOrCreateWallet(userId);
     
-    const transaction = await sequelize.transaction();
-    
-    try {
-      await wallet.update({
-        is_frozen: false,
-        freeze_reason: null
-      }, { transaction });
-      
-      // Create audit transaction
-      await WalletTransaction.create({
-        wallet_id: wallet.id,
-        type: 'admin_adjustment',
-        amount: 0,
-        currency: 'BOM',
-        description: 'Wallet unfrozen',
-        status: 'completed',
-        metadata: { 
-          action: 'unfreeze',
-          admin_id: adminId,
-          timestamp: new Date()
+    // Confirm deposit (admin only)
+    static async confirmDeposit(transactionId, adminId) {
+        const transaction = await WalletTransaction.sequelize.transaction();
+        
+        try {
+            const depositTransaction = await WalletTransaction.findOne({
+                where: { 
+                    id: transactionId,
+                    type: 'deposit',
+                    status: 'pending'
+                },
+                include: [{
+                    model: Wallet,
+                    as: 'Wallet'
+                }],
+                transaction
+            });
+            
+            if (!depositTransaction) {
+                throw new Error('Pending deposit transaction not found');
+            }
+            
+            // Update wallet balance
+            const newBalance = parseFloat(depositTransaction.Wallet.balance) + parseFloat(depositTransaction.amount);
+            await depositTransaction.Wallet.update({
+                balance: newBalance
+            }, { transaction });
+            
+            // Update transaction status
+            await depositTransaction.update({
+                status: 'completed',
+                metadata: {
+                    ...depositTransaction.metadata,
+                    approved_by: adminId,
+                    approved_at: new Date()
+                }
+            }, { transaction });
+            
+            // Create system transaction for record
+            await WalletTransaction.create({
+                wallet_id: depositTransaction.wallet_id,
+                type: 'admin_adjustment',
+                amount: depositTransaction.amount,
+                currency: 'BOM',
+                description: `Deposit approved by admin ${adminId}`,
+                status: 'completed',
+                metadata: {
+                    original_transaction: transactionId,
+                    admin_id: adminId
+                }
+            }, { transaction });
+            
+            await transaction.commit();
+            
+            return {
+                success: true,
+                transaction: depositTransaction,
+                newBalance: newBalance
+            };
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Confirm deposit error:', error);
+            throw error;
         }
-      }, { transaction });
-      
-      await transaction.commit();
-      
-      console.log(`✅ Unfrozen wallet for user ${userId}`);
-      
-      return wallet;
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-  }
-  
-  async adminAdjustBalance(userId, amount, reason, adminId) {
-    const wallet = await this.getOrCreateWallet(userId);
-    
-    if (wallet.is_frozen) {
-      throw new Error('Wallet is frozen. Cannot adjust balance.');
     }
     
-    const transaction = await sequelize.transaction();
-    
-    try {
-      // Create transaction record
-      const walletTransaction = await WalletTransaction.create({
-        wallet_id: wallet.id,
-        type: 'admin_adjustment',
-        amount: amount,
-        currency: 'BOM',
-        description: `Admin adjustment: ${reason}`,
-        status: 'completed',
-        metadata: { 
-          reason: reason,
-          admin_id: adminId,
-          timestamp: new Date()
+    // Request withdrawal
+    static async requestWithdrawal(userId, amount, method, payoutDetails) {
+        const transaction = await WalletTransaction.sequelize.transaction();
+        
+        try {
+            const wallet = await Wallet.findOne({ 
+                where: { user_id: userId },
+                transaction
+            });
+            
+            if (!wallet) {
+                throw new Error('Wallet not found');
+            }
+            
+            if (wallet.is_frozen) {
+                throw new Error('Wallet is frozen. Cannot process withdrawal.');
+            }
+            
+            if (parseFloat(wallet.balance) < parseFloat(amount)) {
+                throw new Error('Insufficient balance');
+            }
+            
+            // Minimum withdrawal check
+            if (amount < 20) {
+                throw new Error('Minimum withdrawal amount is 20 BOM');
+            }
+            
+            // Deduct from wallet
+            const newBalance = parseFloat(wallet.balance) - parseFloat(amount);
+            await wallet.update({
+                balance: newBalance
+            }, { transaction });
+            
+            // Create withdrawal transaction
+            const withdrawalTransaction = await WalletTransaction.create({
+                wallet_id: wallet.id,
+                type: 'withdrawal',
+                amount: -Math.abs(amount), // Negative amount for withdrawal
+                currency: 'BOM',
+                description: `Withdrawal to ${method}: ${payoutDetails}`,
+                status: 'pending',
+                metadata: {
+                    method: method,
+                    payout_details: payoutDetails,
+                    usd_value: amount, // 1 BOM = $1 USD
+                    processed_by: null,
+                    processed_at: null
+                }
+            }, { transaction });
+            
+            // Create withdrawal record
+            const withdrawal = await Withdrawal.create({
+                user_id: userId,
+                amount: amount,
+                method: method,
+                payout_details: payoutDetails,
+                usd_value: amount,
+                status: 'pending',
+                transaction_id: withdrawalTransaction.id
+            }, { transaction });
+            
+            await transaction.commit();
+            
+            return {
+                id: withdrawal.id,
+                amount: withdrawal.amount,
+                method: withdrawal.method,
+                status: withdrawal.status,
+                created_at: withdrawal.created_at
+            };
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Request withdrawal error:', error);
+            throw error;
         }
-      }, { transaction });
-      
-      // Update wallet balance
-      if (amount > 0) {
-        await wallet.increment('balance', { by: amount, transaction });
-      } else {
-        await wallet.decrement('balance', { by: Math.abs(amount), transaction });
-      }
-      
-      await wallet.reload({ transaction });
-      await transaction.commit();
-      
-      console.log(`🔧 Admin ${adminId} adjusted wallet for user ${userId} by ${amount} BOM: ${reason}`);
-      
-      return {
-        transaction: walletTransaction,
-        newBalance: parseFloat(wallet.balance)
-      };
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
     }
-  }
-  
-  async getPendingDeposits() {
-    return await WalletTransaction.findAll({
-      where: {
-        type: 'deposit',
-        status: 'pending'
-      },
-      order: [['created_at', 'DESC']],
-      include: [{
-        model: Wallet,
-        attributes: ['user_id']
-      }]
-    });
-  }
-  
-  async getPendingWithdrawals() {
-    return await Withdrawal.findAll({
-      where: {
-        status: 'pending'
-      },
-      order: [['created_at', 'DESC']],
-      include: [{
-        model: User,
-        as: 'User',
-        attributes: ['telegram_id', 'first_name', 'username']
-      }]
-    });
-  }
-  
-  async getTotalPlatformBalance() {
-    const result = await Wallet.findOne({
-      attributes: [
-        [sequelize.fn('SUM', sequelize.col('balance')), 'total_balance']
-      ],
-      where: {
-        is_frozen: false
-      }
-    });
     
-    return parseFloat(result.get('total_balance')) || 0;
-  }
-  
-  async getWalletStats() {
-    const totalWallets = await Wallet.count();
-    const activeWallets = await Wallet.count({ where: { is_frozen: false } });
-    const frozenWallets = await Wallet.count({ where: { is_frozen: true } });
-    const totalBalance = await this.getTotalPlatformBalance();
+    // Transfer BOM between users
+    static async transfer(senderId, receiverId, amount, description) {
+        const transaction = await WalletTransaction.sequelize.transaction();
+        
+        try {
+            // Get sender wallet
+            const senderWallet = await Wallet.findOne({ 
+                where: { user_id: senderId },
+                transaction
+            });
+            
+            if (!senderWallet) {
+                throw new Error('Sender wallet not found');
+            }
+            
+            if (senderWallet.is_frozen) {
+                throw new Error('Sender wallet is frozen');
+            }
+            
+            if (parseFloat(senderWallet.balance) < parseFloat(amount)) {
+                throw new Error('Insufficient balance');
+            }
+            
+            // Get receiver wallet (create if doesn't exist)
+            let receiverWallet = await Wallet.findOne({ 
+                where: { user_id: receiverId },
+                transaction
+            });
+            
+            if (!receiverWallet) {
+                receiverWallet = await Wallet.create({
+                    user_id: receiverId,
+                    balance: 0.00,
+                    currency: 'BOM',
+                    is_frozen: false
+                }, { transaction });
+            }
+            
+            if (receiverWallet.is_frozen) {
+                throw new Error('Receiver wallet is frozen');
+            }
+            
+            // Calculate fees based on sender's subscription tier
+            const senderSubscription = await UserSubscription.findOne({
+                where: { 
+                    user_id: senderId,
+                    status: 'active'
+                },
+                transaction
+            });
+            
+            const feePercentage = senderSubscription?.tier === 'premium' ? 0.005 : 0.01; // 0.5% for premium, 1% for freemium
+            const feeAmount = amount * feePercentage;
+            const netAmount = amount - feeAmount;
+            
+            // Update balances
+            const newSenderBalance = parseFloat(senderWallet.balance) - amount;
+            await senderWallet.update({
+                balance: newSenderBalance
+            }, { transaction });
+            
+            const newReceiverBalance = parseFloat(receiverWallet.balance) + netAmount;
+            await receiverWallet.update({
+                balance: newReceiverBalance
+            }, { transaction });
+            
+            // Create sender transaction
+            await WalletTransaction.create({
+                wallet_id: senderWallet.id,
+                type: 'transfer',
+                amount: -amount,
+                currency: 'BOM',
+                description: `Transfer to user ${receiverId}: ${description}`,
+                status: 'completed',
+                metadata: {
+                    receiver_id: receiverId,
+                    fee: feeAmount,
+                    net_amount: netAmount
+                }
+            }, { transaction });
+            
+            // Create receiver transaction
+            await WalletTransaction.create({
+                wallet_id: receiverWallet.id,
+                type: 'transfer',
+                amount: netAmount,
+                currency: 'BOM',
+                description: `Transfer from user ${senderId}: ${description}`,
+                status: 'completed',
+                metadata: {
+                    sender_id: senderId,
+                    original_amount: amount,
+                    fee: feeAmount
+                }
+            }, { transaction });
+            
+            // Create fee transaction for platform
+            if (feeAmount > 0) {
+                const platformWallet = await Wallet.findOne({
+                    where: { user_id: 0 }, // Platform wallet
+                    transaction
+                });
+                
+                if (!platformWallet) {
+                    await Wallet.create({
+                        user_id: 0,
+                        balance: feeAmount,
+                        currency: 'BOM',
+                        is_frozen: false
+                    }, { transaction });
+                } else {
+                    const newPlatformBalance = parseFloat(platformWallet.balance) + feeAmount;
+                    await platformWallet.update({
+                        balance: newPlatformBalance
+                    }, { transaction });
+                }
+                
+                await WalletTransaction.create({
+                    wallet_id: platformWallet?.id || 0,
+                    type: 'fee',
+                    amount: feeAmount,
+                    currency: 'BOM',
+                    description: `Transfer fee from user ${senderId} to ${receiverId}`,
+                    status: 'completed',
+                    metadata: {
+                        sender_id: senderId,
+                        receiver_id: receiverId,
+                        original_amount: amount
+                    }
+                }, { transaction });
+            }
+            
+            await transaction.commit();
+            
+            return {
+                success: true,
+                amount: amount,
+                fee: feeAmount,
+                netAmount: netAmount,
+                senderId: senderId,
+                receiverId: receiverId,
+                timestamp: new Date().toISOString()
+            };
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Transfer error:', error);
+            throw error;
+        }
+    }
     
-    const totalDeposits = await WalletTransaction.sum('amount', {
-      where: {
-        type: 'deposit',
-        status: 'completed'
-      }
-    }) || 0;
+    // Get transaction history
+    static async getTransactionHistory(userId, limit = 10, offset = 0) {
+        try {
+            const wallet = await Wallet.findOne({ where: { user_id: userId } });
+            
+            if (!wallet) {
+                return {
+                    transactions: [],
+                    pagination: {
+                        total: 0,
+                        hasMore: false
+                    }
+                };
+            }
+            
+            const { count, rows } = await WalletTransaction.findAndCountAll({
+                where: { wallet_id: wallet.id },
+                order: [['created_at', 'DESC']],
+                limit: limit + 1, // Get one extra to check if there are more
+                offset: offset
+            });
+            
+            const hasMore = rows.length > limit;
+            const transactions = hasMore ? rows.slice(0, limit) : rows;
+            
+            return {
+                transactions: transactions.map(tx => ({
+                    id: tx.id,
+                    type: tx.type,
+                    amount: parseFloat(tx.amount),
+                    currency: tx.currency,
+                    description: tx.description,
+                    status: tx.status,
+                    created_at: tx.created_at
+                })),
+                pagination: {
+                    total: count,
+                    hasMore: hasMore,
+                    offset: offset,
+                    limit: limit
+                }
+            };
+        } catch (error) {
+            console.error('Get transaction history error:', error);
+            throw new Error('Failed to get transaction history');
+        }
+    }
     
-    const totalWithdrawals = await WalletTransaction.sum('amount', {
-      where: {
-        type: 'withdrawal',
-        status: 'completed'
-      }
-    }) || 0;
+    // Admin functions
+    static async adminAdjustBalance(userId, amount, description, adminId) {
+        const transaction = await WalletTransaction.sequelize.transaction();
+        
+        try {
+            let wallet = await Wallet.findOne({ 
+                where: { user_id: userId },
+                transaction
+            });
+            
+            if (!wallet) {
+                wallet = await Wallet.create({
+                    user_id: userId,
+                    balance: amount,
+                    currency: 'BOM',
+                    is_frozen: false
+                }, { transaction });
+            } else {
+                const newBalance = parseFloat(wallet.balance) + parseFloat(amount);
+                await wallet.update({
+                    balance: newBalance
+                }, { transaction });
+            }
+            
+            // Create admin adjustment transaction
+            const adminTransaction = await WalletTransaction.create({
+                wallet_id: wallet.id,
+                type: amount >= 0 ? 'admin_adjustment' : 'admin_deduction',
+                amount: amount,
+                currency: 'BOM',
+                description: description,
+                status: 'completed',
+                metadata: {
+                    admin_id: adminId,
+                    adjustment_type: 'manual',
+                    timestamp: new Date().toISOString()
+                }
+            }, { transaction });
+            
+            await transaction.commit();
+            
+            return {
+                success: true,
+                transaction: adminTransaction,
+                newBalance: parseFloat(wallet.balance)
+            };
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Admin adjust balance error:', error);
+            throw error;
+        }
+    }
     
-    return {
-      totalWallets,
-      activeWallets,
-      frozenWallets,
-      totalBalance: parseFloat(totalBalance),
-      totalDeposits: parseFloat(totalDeposits),
-      totalWithdrawals: Math.abs(parseFloat(totalWithdrawals)),
-      netRevenue: parseFloat(totalDeposits) - Math.abs(parseFloat(totalWithdrawals))
-    };
-  }
+    static async freezeWallet(userId, reason, adminId) {
+        try {
+            const wallet = await Wallet.findOne({ where: { user_id: userId } });
+            
+            if (!wallet) {
+                throw new Error('Wallet not found');
+            }
+            
+            if (wallet.is_frozen) {
+                throw new Error('Wallet already frozen');
+            }
+            
+            await wallet.update({
+                is_frozen: true,
+                freeze_reason: reason
+            });
+            
+            // Log the freeze action
+            await WalletTransaction.create({
+                wallet_id: wallet.id,
+                type: 'admin_action',
+                amount: 0,
+                currency: 'BOM',
+                description: `Wallet frozen by admin ${adminId}: ${reason}`,
+                status: 'completed',
+                metadata: {
+                    admin_id: adminId,
+                    action: 'freeze',
+                    reason: reason,
+                    timestamp: new Date().toISOString()
+                }
+            });
+            
+            return {
+                success: true,
+                userId: userId,
+                frozen: true,
+                reason: reason,
+                adminId: adminId,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Freeze wallet error:', error);
+            throw error;
+        }
+    }
+    
+    static async unfreezeWallet(userId, adminId) {
+        try {
+            const wallet = await Wallet.findOne({ where: { user_id: userId } });
+            
+            if (!wallet) {
+                throw new Error('Wallet not found');
+            }
+            
+            if (!wallet.is_frozen) {
+                throw new Error('Wallet is not frozen');
+            }
+            
+            await wallet.update({
+                is_frozen: false,
+                freeze_reason: null
+            });
+            
+            // Log the unfreeze action
+            await WalletTransaction.create({
+                wallet_id: wallet.id,
+                type: 'admin_action',
+                amount: 0,
+                currency: 'BOM',
+                description: `Wallet unfrozen by admin ${adminId}`,
+                status: 'completed',
+                metadata: {
+                    admin_id: adminId,
+                    action: 'unfreeze',
+                    timestamp: new Date().toISOString()
+                }
+            });
+            
+            return {
+                success: true,
+                userId: userId,
+                frozen: false,
+                adminId: adminId,
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Unfreeze wallet error:', error);
+            throw error;
+        }
+    }
+    
+    // Get pending deposits (admin only)
+    static async getPendingDeposits() {
+        try {
+            const deposits = await WalletTransaction.findAll({
+                where: {
+                    type: 'deposit',
+                    status: 'pending'
+                },
+                include: [{
+                    model: Wallet,
+                    as: 'Wallet',
+                    attributes: ['user_id']
+                }],
+                order: [['created_at', 'ASC']],
+                limit: 50
+            });
+            
+            return deposits;
+        } catch (error) {
+            console.error('Get pending deposits error:', error);
+            throw error;
+        }
+    }
+    
+    // Get pending withdrawals (admin only)
+    static async getPendingWithdrawals() {
+        try {
+            const withdrawals = await Withdrawal.findAll({
+                where: {
+                    status: 'pending'
+                },
+                include: [{
+                    model: User,
+                    attributes: ['username', 'first_name']
+                }],
+                order: [['created_at', 'ASC']],
+                limit: 50
+            });
+            
+            return withdrawals;
+        } catch (error) {
+            console.error('Get pending withdrawals error:', error);
+            throw error;
+        }
+    }
+    
+    // Get wallet statistics (admin only)
+    static async getWalletStats() {
+        try {
+            const [
+                totalWallets,
+                frozenWallets,
+                totalBalanceResult,
+                totalDeposits,
+                totalWithdrawals
+            ] = await Promise.all([
+                Wallet.count(),
+                Wallet.count({ where: { is_frozen: true } }),
+                Wallet.findOne({
+                    attributes: [
+                        [Sequelize.fn('SUM', Sequelize.col('balance')), 'total']
+                    ],
+                    where: { user_id: { [Op.ne]: 0 } } // Exclude platform wallet
+                }),
+                WalletTransaction.sum('amount', {
+                    where: {
+                        type: 'deposit',
+                        status: 'completed',
+                        amount: { [Op.gt]: 0 }
+                    }
+                }),
+                WalletTransaction.sum('amount', {
+                    where: {
+                        type: 'withdrawal',
+                        status: 'completed'
+                    }
+                })
+            ]);
+            
+            const totalBalance = parseFloat(totalBalanceResult?.dataValues?.total || 0);
+            const totalDepositsValue = parseFloat(totalDeposits || 0);
+            const totalWithdrawalsValue = Math.abs(parseFloat(totalWithdrawals || 0));
+            const netRevenue = totalDepositsValue - totalWithdrawalsValue;
+            
+            return {
+                totalWallets,
+                activeWallets: totalWallets - frozenWallets,
+                frozenWallets,
+                totalBalance,
+                totalDeposits: totalDepositsValue,
+                totalWithdrawals: totalWithdrawalsValue,
+                netRevenue
+            };
+        } catch (error) {
+            console.error('Get wallet stats error:', error);
+            throw error;
+        }
+    }
 }
 
-module.exports = new WalletService();
+module.exports = WalletService;

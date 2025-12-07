@@ -1,3 +1,4 @@
+// src/handlers/walletHandler.js - USER WALLET ONLY
 const { Markup } = require('telegraf');
 const WalletService = require('../services/walletService');
 const SubscriptionService = require('../services/subscriptionService');
@@ -44,21 +45,20 @@ class WalletHandler {
     try {
       const message = `💳 *Deposit BOM Coins*\n\n` +
         `*How to deposit:*\n` +
-        `1. Send payment to our platform address\n` +
-        `2. Upload proof of payment (screenshot)\n` +
-        `3. Wait for admin verification (1-6 hours)\n\n` +
+        `1. Contact @BotomicsSupportBot to buy BOM\n` +
+        `2. Follow payment instructions\n` +
+        `3. Send payment proof\n` +
+        `4. Wait for admin verification (1-6 hours)\n\n` +
         `*Payment Details:*\n` +
         `▫️ Rate: 1 BOM = $1.00 USD\n` +
         `▫️ Minimum: 5 BOM ($5.00)\n` +
-        `▫️ Platform Address: \`BOTOMICS_PLATFORM_001\`\n\n` +
+        `▫️ Your Wallet Address: \`BOTOMICS_${ctx.from.id}\`\n\n` +
         `*Important:*\n` +
-        `• Include your Telegram ID in payment notes\n` +
-        `• Only send from verified payment methods\n` +
-        `• Contact support for any issues`;
+        `• Always include your Telegram ID in payment notes\n` +
+        `• Contact @BotomicsSupportBot for any issues`;
       
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📸 Submit Deposit Proof', 'wallet_deposit_proof')],
-        [Markup.button.callback('📞 Contact Support', 'contact_support')],
+        [Markup.button.url('📞 Contact Support', 'https://t.me/BotomicsSupportBot')],
         [Markup.button.callback('🔙 Back to Wallet', 'wallet_main')]
       ]);
       
@@ -84,16 +84,15 @@ class WalletHandler {
         `*Processing Time:* 24 hours\n\n` +
         `*Available Methods:*\n` +
         `▫️ PayPal (Email required)\n` +
-        `▫️ Bank Transfer (Details required)\n` +
         `▫️ Crypto (Wallet address required)\n\n` +
         `*Note:*\n` +
         `• Withdrawals are processed manually\n` +
-        `• Provide accurate payout details\n` +
+        `• Use wallet Mini-App to submit withdrawal request\n` +
         `• Contact support for urgent requests`;
       
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('💰 Request Withdrawal', 'wallet_withdraw_request')],
-        [Markup.button.callback('📞 Contact Support', 'contact_support')],
+        [Markup.button.url('💼 Open Wallet Mini-App', 'https://testweb.maroset.com/wallet')],
+        [Markup.button.url('📞 Contact Support', 'https://t.me/BotomicsSupportBot')],
         [Markup.button.callback('🔙 Back to Wallet', 'wallet_main')]
       ]);
       
@@ -115,12 +114,12 @@ class WalletHandler {
       
       const message = `🔄 *Transfer BOM Coins*\n\n` +
         `*Current Balance:* ${wallet.balance.toFixed(2)} BOM\n` +
-        `*Transfer Fee:* Free\n` +
-        `*Minimum Transfer:* 1 BOM\n\n` +
+        `*Transfer Fee:* 1% (Freemium), 0.5% (Premium)\n` +
+        `*Minimum Transfer:* 0.01 BOM\n\n` +
         `*How to transfer:*\n` +
-        `1. Enter receiver's Telegram ID or @username\n` +
-        `2. Enter amount to transfer\n` +
-        `3. Add optional description\n` +
+        `1. Use wallet Mini-App\n` +
+        `2. Enter receiver's Telegram ID, @username, or BOTOMICS_address\n` +
+        `3. Enter amount to transfer\n` +
         `4. Confirm transfer\n\n` +
         `*Note:*\n` +
         `• Transfers are instant\n` +
@@ -128,7 +127,7 @@ class WalletHandler {
         `• Both users must have active wallets`;
       
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔄 Start Transfer', 'wallet_transfer_start')],
+        [Markup.button.url('🔄 Open Wallet Mini-App', 'https://testweb.maroset.com/wallet')],
         [Markup.button.callback('🔙 Back to Wallet', 'wallet_main')]
       ]);
       
@@ -161,13 +160,13 @@ class WalletHandler {
         `✅ Pin /start message\n` +
         `✅ Ad-free experience\n` +
         `✅ Priority support\n\n` +
-        `*Price:* 5 BOM per month ($5.00)\n` +
+        `*Price:* 3 BOM per month ($3.00)\n` +
         `*Auto-renewal:* Enabled by default`;
       
       const keyboardButtons = [];
       
       if (currentTier === 'freemium') {
-        if (wallet.balance >= 5 && !wallet.isFrozen) {
+        if (wallet.balance >= 3 && !wallet.isFrozen) {
           keyboardButtons.push([Markup.button.callback('⭐ Upgrade to Premium', 'wallet_upgrade_premium')]);
         } else {
           keyboardButtons.push([Markup.button.callback('💳 Add BOM Coins', 'wallet_deposit')]);
@@ -303,54 +302,6 @@ class WalletHandler {
     } catch (error) {
       console.error('Cancel premium error:', error);
       await ctx.answerCbQuery(`❌ ${error.message}`);
-    }
-  }
-  
-  // Admin wallet management
-  async handleAdminWalletDashboard(ctx) {
-    try {
-      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await ctx.reply('❌ Admin access required.');
-        return;
-      }
-      
-      const stats = await WalletService.getWalletStats();
-      
-      const message = `🏦 *Wallet System Dashboard*\n\n` +
-        `*Platform Statistics:*\n` +
-        `▫️ Total Wallets: ${stats.totalWallets}\n` +
-        `▫️ Active Wallets: ${stats.activeWallets}\n` +
-        `▫️ Frozen Wallets: ${stats.frozenWallets}\n` +
-        `▫️ Total Balance: ${stats.totalBalance.toFixed(2)} BOM\n` +
-        `▫️ Total Deposits: ${stats.totalDeposits.toFixed(2)} BOM\n` +
-        `▫️ Total Withdrawals: ${stats.totalWithdrawals.toFixed(2)} BOM\n` +
-        `▫️ Net Revenue: ${stats.netRevenue.toFixed(2)} BOM\n\n` +
-        `*Quick Actions:*`;
-      
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📥 Pending Deposits', 'admin_pending_deposits')],
-        [Markup.button.callback('📤 Pending Withdrawals', 'admin_pending_withdrawals')],
-        [Markup.button.callback('👤 Manage User Wallet', 'admin_manage_wallet')],
-        [Markup.button.callback('🔧 Adjust Balance', 'admin_adjust_balance')],
-        [Markup.button.callback('📊 Generate Report', 'admin_wallet_report')],
-        [Markup.button.callback('🔙 Admin Dashboard', 'platform_dashboard')]
-      ]);
-      
-      if (ctx.updateType === 'callback_query') {
-        await ctx.editMessageText(message, {
-          parse_mode: 'Markdown',
-          ...keyboard
-        });
-      } else {
-        await ctx.replyWithMarkdown(message, keyboard);
-      }
-      
-      if (ctx.updateType === 'callback_query') {
-        await ctx.answerCbQuery();
-      }
-    } catch (error) {
-      console.error('Admin wallet dashboard error:', error);
-      await ctx.reply('❌ Error loading wallet dashboard.');
     }
   }
 }

@@ -1,39 +1,42 @@
-// database/db.js - RAILWAY POSTGRESQL VERSION
+// database/db.js - RAILWAY.COM
 const { Sequelize } = require('sequelize');
-const config = require('../config/environment');
+const createConfig = require('../config/environment');
+const config = createConfig();
 
 console.log('🗄️ Database configuration:');
 console.log('   Environment:', config.NODE_ENV);
-console.log('   Platform:', config.IS_RAILWAY ? 'Railway PostgreSQL 🚂' : 'Local');
 
-if (!config.DATABASE_URL) {
-  console.error('❌ DATABASE_URL is not configured');
-  console.error('💡 How to fix on Railway:');
-  console.error('   1. Go to Railway Dashboard → Your Project');
-  console.error('   2. Click "New" → Database → PostgreSQL');
-  console.error('   3. Copy the DATABASE_URL provided by Railway');
-  console.error('   4. Go to Variables tab and add DATABASE_URL');
-  process.exit(1);
+// Detect cPanel environment
+const isCpanel = process.env.HOME && process.env.HOME.includes('/home/');
+if (isCpanel) {
+  console.log('   Platform: Yegara.com cPanel');
 }
 
-// Parse database URL for logging
-let dbInfo = 'Railway PostgreSQL';
+// Enhanced database URL parsing
+let dbHost = 'unknown';
+let dbName = 'unknown';
 try {
   const dbUrl = new URL(config.DATABASE_URL);
-  const host = dbUrl.hostname;
-  const dbName = dbUrl.pathname.replace('/', '');
-  dbInfo = `${host}/${dbName}`;
+  dbHost = `${dbUrl.hostname}:${dbUrl.port || 5432}`;
+  dbName = dbUrl.pathname.replace('/', '') || 'unknown';
 } catch (error) {
-  // If URL parsing fails, use as-is
+  // If URL parsing fails, try to extract host info manually
+  const match = config.DATABASE_URL.match(/@([^:]+):(\d+)\/([^?]+)/);
+  if (match) {
+    dbHost = `${match[1]}:${match[2]}`;
+    dbName = match[3];
+  }
 }
 
-console.log('   Database:', dbInfo);
+console.log('   Database Host:', dbHost);
+console.log('   Database Name:', dbName);
+console.log('   Connection URL Length:', config.DATABASE_URL.length);
 
-// Create Sequelize instance optimized for Railway PostgreSQL
+// Create Sequelize instance with cPanel optimizations
 const sequelize = new Sequelize(config.DATABASE_URL, {
   dialect: 'postgres',
-  logging: config.IS_DEVELOPMENT ? (msg) => {
-    // Filter out noisy logs
+  logging: config.NODE_ENV === 'development' ? (msg) => {
+    // Filter out noisy logs in development
     if (!msg.includes('SELECT table_name') && 
         !msg.includes('information_schema') &&
         !msg.includes('pg_catalog')) {
@@ -49,7 +52,7 @@ const sequelize = new Sequelize(config.DATABASE_URL, {
   },
   
   dialectOptions: {
-    ssl: config.IS_PRODUCTION ? {
+    ssl: config.NODE_ENV === 'production' ? {
       require: true,
       rejectUnauthorized: false
     } : false,
@@ -58,7 +61,7 @@ const sequelize = new Sequelize(config.DATABASE_URL, {
   },
   
   retry: {
-    max: 5,
+    max: 3,
     timeout: 30000,
     match: [
       /ConnectionError/,
@@ -76,12 +79,12 @@ const sequelize = new Sequelize(config.DATABASE_URL, {
   connectTimeout: 30000,
 });
 
-console.log('✅ Database configured for Railway');
+console.log('✅ Database configured successfully');
 
 // Enhanced database connection function
 async function connectDB() {
   try {
-    console.log('🗄️ Establishing database connection to Railway PostgreSQL...');
+    console.log('🗄️ Establishing database connection...');
     
     // Test connection with timeout
     const connectionPromise = sequelize.authenticate();
@@ -97,15 +100,14 @@ async function connectDB() {
     await sequelize.sync({ 
       alter: true,
       force: false,
-      logging: config.IS_DEVELOPMENT ? console.log : false
+      logging: config.NODE_ENV === 'development' ? console.log : false
     });
     console.log('✅ All database models synchronized');
     
     // Test basic operations
     try {
-      const [results] = await sequelize.query('SELECT NOW() as current_time, version() as version');
+      const [results] = await sequelize.query('SELECT NOW() as current_time');
       console.log('✅ Database time check:', results[0].current_time);
-      console.log('✅ PostgreSQL Version:', results[0].version.split(' ')[1]);
     } catch (testError) {
       console.log('⚠️  Database time check failed (non-critical):', testError.message);
     }
@@ -116,25 +118,25 @@ async function connectDB() {
     console.error('   Error:', error.message);
     
     if (error.message.includes('timeout')) {
-      console.error('💡 Connection timeout - check your Railway database service');
+      console.error('💡 Connection timeout - check your database host and credentials');
     } else if (error.message.includes('authentication')) {
-      console.error('💡 Authentication failed - check DATABASE_URL credentials');
+      console.error('💡 Authentication failed - check database username and password');
     } else if (error.message.includes('getaddrinfo')) {
-      console.error('💡 Host not found - check DATABASE_URL hostname');
+      console.error('💡 Host not found - check database hostname in DATABASE_URL');
     } else if (error.message.includes('SSL')) {
-      console.error('💡 SSL connection issue - Railway requires SSL');
+      console.error('💡 SSL connection issue - check SSL configuration');
     } else if (error.message.includes('database')) {
-      console.error('💡 Database not found - verify database exists on Railway');
+      console.error('💡 Database not found - verify database name exists');
     }
     
-    console.error('\n💡 Railway Database Setup:');
-    console.error('   1. Go to Railway Dashboard → Your Project');
-    console.error('   2. Add "PostgreSQL" database service');
-    console.error('   3. Copy DATABASE_URL from service variables');
-    console.error('   4. Add to your project variables');
+    console.error('\n💡 Yegara.com Database Setup:');
+    console.error('   1. Go to cPanel → PostgreSQL Databases');
+    console.error('   2. Create database and user');
+    console.error('   3. Add user to database with ALL PRIVILEGES');
+    console.error('   4. Set DATABASE_URL in Environment Variables');
     
-    if (config.IS_PRODUCTION) {
-      console.error('💥 Cannot continue without database connection');
+    if (config.NODE_ENV === 'production') {
+      console.error('💥 Cannot continue without database in production');
       process.exit(1);
     }
     
@@ -164,7 +166,6 @@ async function healthCheck() {
       database: {
         time: dbTime[0].current_time,
         connection: 'OK',
-        platform: 'Railway PostgreSQL',
         host: sequelize.config.host
       },
       stats: {
@@ -196,7 +197,7 @@ async function quickHealthCheck() {
     return { 
       healthy: true, 
       timestamp: new Date().toISOString(),
-      database: 'Railway PostgreSQL OK'
+      database: 'OK'
     };
   } catch (error) {
     return { 
@@ -207,7 +208,7 @@ async function quickHealthCheck() {
   }
 }
 
-// Disconnect function
+// Disconnect function with better cleanup
 async function disconnectDB() {
   try {
     console.log('🛑 Closing database connection...');
@@ -218,8 +219,8 @@ async function disconnectDB() {
   }
 }
 
-// Test connection on startup
-if (config.IS_DEVELOPMENT) {
+// Test connection on startup in development
+if (config.NODE_ENV === 'development') {
   console.log('🔧 Development mode: Testing database connection...');
   connectDB().then(success => {
     if (success) {

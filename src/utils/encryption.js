@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const config = require('../../config/environment');
+const createConfig = require('../../config/environment');
+const config = createConfig();
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;

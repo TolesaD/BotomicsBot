@@ -38,6 +38,10 @@ const BroadcastHistory = sequelize.define('BroadcastHistory', {
   sent_at: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
+  },
+  created_at: {  // ADDED THIS COLUMN
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
   tableName: 'broadcast_history',

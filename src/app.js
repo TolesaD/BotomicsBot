@@ -1,5 +1,4 @@
-﻿
-// ALWAYS load dotenv first (won't hurt if file doesn't exist)
+﻿// ALWAYS load dotenv first (won't hurt if file doesn't exist)
 try {
   require('dotenv').config();
 } catch (e) {
@@ -57,7 +56,6 @@ const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandl
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
 const WalletHandler = require('./handlers/walletHandler');
-const AdminWalletHandler = require('./handlers/adminWalletHandler'); // NEW
 
 // Import routes
 const walletRoutes = require('./routes/walletRoutes');
@@ -148,6 +146,7 @@ class MetaBotCreator {
             .info { background: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }
             .railway-badge { background: #0a0a0a; color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; margin-left: 10px; }
             .api-endpoints { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; font-family: monospace; font-size: 14px; }
+            .admin-info { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; border-left: 4px solid #ffc107; }
           </style>
         </head>
         <body>
@@ -162,6 +161,17 @@ class MetaBotCreator {
               • Database: ${config.DATABASE_URL ? 'Connected ✓' : 'Not Connected ✗'}<br>
               • Wallet: ${walletUrl ? 'Available ✓' : 'Not Available ✗'}<br>
               • Server Time: ${new Date().toISOString()}
+            </div>
+            
+            <div class="admin-info">
+              <strong>🤫 Admin Commands (Platform Creator Only):</strong><br>
+              • <code>/platform</code> - Platform admin dashboard<br>
+              • <code>/admin_wallet</code> - Wallet admin dashboard<br>
+              • <code>/add_bom &lt;user&gt; &lt;amount&gt;</code> - Add BOM to user<br>
+              • <code>/freeze_wallet &lt;user&gt; &lt;reason&gt;</code> - Freeze wallet<br>
+              • <code>/unfreeze_wallet &lt;user&gt;</code> - Unfreeze wallet<br>
+              • <code>/grant_premium &lt;user&gt; &lt;days&gt;</code> - Grant premium<br>
+              • Use Telegram bot for full admin interface
             </div>
             
             <div class="api-endpoints">
@@ -243,19 +253,19 @@ class MetaBotCreator {
     this.bot.command('mybots', myBotsHandler);
     this.bot.command('cancel', cancelCreationHandler);
     
-    // Platform admin commands
-    this.bot.command('platform', (ctx) => {
+    // Platform admin commands - NOW WITH WALLET INTEGRATION
+    this.bot.command('platform', async (ctx) => {
       if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        PlatformAdminHandler.platformDashboard(ctx);
+        await PlatformAdminHandler.platformDashboard(ctx);
       } else {
         ctx.reply('❌ Platform admin access required.');
       }
     });
     
-    // Admin wallet commands - NEW
+    // Admin wallet commands - UPDATED: Now integrated into PlatformAdminHandler
     this.bot.command('admin_wallet', async (ctx) => {
       if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await WalletHandler.handleAdminWalletDashboard(ctx);
+        await PlatformAdminHandler.walletAdminDashboard(ctx);
       } else {
         ctx.reply('❌ Admin access required.');
       }
@@ -263,7 +273,7 @@ class MetaBotCreator {
     
     this.bot.command('add_bom', async (ctx) => {
       if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await AdminWalletHandler.handleAddBOMCommand(ctx);
+        await PlatformAdminHandler.startAddBOM(ctx);
       } else {
         ctx.reply('❌ Admin access required.');
       }
@@ -271,12 +281,7 @@ class MetaBotCreator {
     
     this.bot.command('freeze_wallet', async (ctx) => {
       if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        const args = ctx.message.text.split(' ');
-        if (args.length < 3) {
-          await ctx.reply('Usage: /freeze_wallet <user_id> <reason>');
-          return;
-        }
-        await AdminWalletHandler.handleFreezeWalletCommand(ctx, args[1], args.slice(2).join(' '));
+        await PlatformAdminHandler.startFreezeWallet(ctx);
       } else {
         ctx.reply('❌ Admin access required.');
       }
@@ -284,14 +289,86 @@ class MetaBotCreator {
     
     this.bot.command('unfreeze_wallet', async (ctx) => {
       if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        const args = ctx.message.text.split(' ');
-        if (args.length < 2) {
-          await ctx.reply('Usage: /unfreeze_wallet <user_id>');
-          return;
-        }
-        await AdminWalletHandler.handleUnfreezeWalletCommand(ctx, args[1]);
+        await PlatformAdminHandler.startUnfreezeWallet(ctx);
       } else {
         ctx.reply('❌ Admin access required.');
+      }
+    });
+    
+    this.bot.command('grant_premium', async (ctx) => {
+      if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.startGrantPremium(ctx);
+      } else {
+        ctx.reply('❌ Admin access required.');
+      }
+    });
+    
+    this.bot.command('subscription_admin', async (ctx) => {
+      if (PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await PlatformAdminHandler.subscriptionAdminDashboard(ctx);
+      } else {
+        ctx.reply('❌ Admin access required.');
+      }
+    });
+    
+    // Quick admin commands with arguments
+    this.bot.command('addbom', async (ctx) => {
+      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+      
+      const args = ctx.message.text.split(' ');
+      if (args.length < 3) {
+        await ctx.reply('Usage: /addbom <user_id> <amount>');
+        await PlatformAdminHandler.startAddBOM(ctx);
+        return;
+      }
+      
+      // Quick add BOM with arguments
+      try {
+        const userIdentifier = args[1];
+        const amount = parseFloat(args[2]);
+        
+        if (!amount || amount <= 0 || isNaN(amount)) {
+          await ctx.reply('❌ Invalid amount. Please enter a positive number.');
+          return;
+        }
+        
+        // Find user
+        let userId;
+        if (isNaN(userIdentifier)) {
+          const username = userIdentifier.replace('@', '').trim();
+          const user = await require('./models').User.findOne({ where: { username: username } });
+          if (!user) {
+            await ctx.reply('❌ User not found. Please check the ID or username.');
+            return;
+          }
+          userId = user.telegram_id;
+        } else {
+          userId = parseInt(userIdentifier);
+        }
+        
+        const WalletService = require('./services/walletService');
+        const result = await WalletService.adminAdjustBalance(
+          userId, 
+          amount, 
+          'Quick admin BOM addition', 
+          ctx.from.id
+        );
+        
+        await ctx.reply(
+          `✅ *BOM Added Successfully!*\n\n` +
+          `*User ID:* ${userId}\n` +
+          `*Amount Added:* ${amount.toFixed(2)} BOM\n` +
+          `*New Balance:* ${result.newBalance.toFixed(2)} BOM\n` +
+          `*Transaction ID:* ${result.transaction.id}`,
+          { parse_mode: 'Markdown' }
+        );
+        
+      } catch (error) {
+        console.error('Quick add BOM error:', error);
+        await ctx.reply(`❌ Error: ${error.message}`);
       }
     });
     
@@ -359,7 +436,7 @@ class MetaBotCreator {
       const userId = ctx.from.id;
       const messageText = ctx.message.text;
       
-      // Platform admin session
+      // Platform admin session (now includes wallet admin)
       if (PlatformAdminHandler.isInPlatformAdminSession(userId)) {
         await PlatformAdminHandler.handlePlatformAdminInput(ctx);
         return;
@@ -396,6 +473,19 @@ class MetaBotCreator {
       if (messageText.toLowerCase() === 'balance' || messageText === '💰 balance') {
         await WalletHandler.handleWalletCommand(ctx);
         return;
+      }
+      
+      // Admin quick access
+      if (PlatformAdminHandler.isPlatformCreator(userId)) {
+        if (messageText.toLowerCase() === 'admin' || messageText === '👑 admin') {
+          await PlatformAdminHandler.platformDashboard(ctx);
+          return;
+        }
+        
+        if (messageText.toLowerCase() === 'admin wallet' || messageText === '🏦 admin wallet') {
+          await PlatformAdminHandler.walletAdminDashboard(ctx);
+          return;
+        }
       }
       
       // Default to start handler
@@ -651,55 +741,6 @@ class MetaBotCreator {
       await WalletHandler.handleCancelPremium(ctx);
     });
     
-    // Admin wallet callbacks
-    this.bot.action('admin_wallet_dashboard', async (ctx) => {
-      await ctx.answerCbQuery();
-      await WalletHandler.handleAdminWalletDashboard(ctx);
-    });
-    
-    this.bot.action('admin_pending_deposits', async (ctx) => {
-      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Admin access required');
-        return;
-      }
-      await ctx.answerCbQuery('📥 Loading pending deposits...');
-      const WalletHandler = require('./handlers/walletHandler');
-      // Note: Need to add showPendingDeposits method to WalletHandler
-      // For now, redirect to admin dashboard
-      await WalletHandler.handleAdminWalletDashboard(ctx);
-    });
-    
-    this.bot.action('admin_pending_withdrawals', async (ctx) => {
-      if (!PlatformAdminHandler.isPlatformCreator(ctx.from.id)) {
-        await ctx.answerCbQuery('❌ Admin access required');
-        return;
-      }
-      await ctx.answerCbQuery('📤 Loading pending withdrawals...');
-      const WalletHandler = require('./handlers/walletHandler');
-      // Note: Need to add showPendingWithdrawals method to WalletHandler
-      // For now, redirect to admin dashboard
-      await WalletHandler.handleAdminWalletDashboard(ctx);
-    });
-    
-    // Admin BOM addition callbacks
-    this.bot.action(/admin_confirm_add_bom_(.+)_([\d\.]+)/, async (ctx) => {
-      const userIdentifier = ctx.match[1];
-      const amount = parseFloat(ctx.match[2]);
-      await AdminWalletHandler.handleConfirmAddBOM(ctx, userIdentifier, amount);
-    });
-    
-    this.bot.action(/admin_freeze_wallet_(\d+)/, async (ctx) => {
-      const userId = ctx.match[1];
-      await ctx.reply(`Enter freeze reason for user ${userId}:`);
-      // Store in session for next message
-      // Implementation depends on your session management
-    });
-    
-    this.bot.action(/admin_unfreeze_wallet_(\d+)/, async (ctx) => {
-      const userId = ctx.match[1];
-      await AdminWalletHandler.handleUnfreezeWallet(ctx, userId);
-    });
-    
     // Support and info
     this.bot.action('buy_bom_info', async (ctx) => {
       await ctx.answerCbQuery();
@@ -910,9 +951,15 @@ class MetaBotCreator {
       console.log('🗄️ Connecting to Railway PostgreSQL database...');
       await connectDB();
       
-      // Update wallet schema if needed
-      const { addWalletAddressField } = require('../../scripts/add_wallet_address');
-      await addWalletAddressField();
+      // Update wallet schema if needed (optional - script might not exist)
+      try {
+        const { addWalletAddressField } = require('../../scripts/add_wallet_address');
+        await addWalletAddressField();
+        console.log('✅ Wallet schema updated');
+      } catch (error) {
+        console.log('⚠️  Wallet address script not found or failed, continuing...');
+        console.log('   Error:', error.message);
+      }
       
       console.log('✅ MetaBot Creator initialized successfully');
     } catch (error) {
@@ -961,7 +1008,15 @@ class MetaBotCreator {
       console.log('💰 Botomics: Digital currency system');
       console.log('🎫 Premium: Subscription tiers (3 BOM/month)');
       console.log('⏰ Auto-renewal: Enabled (daily cron)');
-      console.log('🏦 Admin Commands: /add_bom, /freeze_wallet');
+      console.log('🏦 ADMIN WALLET COMMANDS (Platform Creator Only):');
+      console.log('   /platform - Platform admin dashboard');
+      console.log('   /admin_wallet - Wallet admin dashboard');
+      console.log('   /add_bom - Add BOM to user');
+      console.log('   /freeze_wallet - Freeze user wallet');
+      console.log('   /unfreeze_wallet - Unfreeze user wallet');
+      console.log('   /grant_premium - Grant premium subscription');
+      console.log('   /subscription_admin - Subscription admin');
+      console.log('   /addbom <user> <amount> - Quick add BOM');
       console.log('===============================================');
       console.log(`🌐 Dashboard: ${config.APP_URL || 'Railway URL'}`);
       console.log(`💰 Wallet: ${config.WALLET_URL}`);

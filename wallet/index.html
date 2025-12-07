@@ -6,19 +6,12 @@
     <title>Botomics Wallet</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#667eea">
     <style>
-        /* Additional inline styles for critical elements */
+        /* Critical inline styles */
         .hidden {
             display: none !important;
-        }
-        
-        .telegram-only {
-            opacity: 0.8;
-            text-align: center;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            margin: 20px 0;
         }
         
         .telegram-warning {
@@ -30,9 +23,26 @@
             margin: 15px 0;
             text-align: center;
         }
+        
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .telegram-only {
+            opacity: 0.8;
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
+    <!-- Non-Telegram Warning -->
     <div id="nonTelegramWarning" class="telegram-warning hidden">
         <h3>⚠️ Telegram Mini App Required</h3>
         <p>This wallet works only within Telegram. Please open it from:</p>
@@ -44,6 +54,7 @@
         <p><strong>Or use the menu button (≡) in the bot</strong></p>
     </div>
 
+    <!-- Main Wallet Container -->
     <div class="container" id="mainContainer">
         <!-- Header -->
         <header class="header">
@@ -71,9 +82,6 @@
             <div class="wallet-actions">
                 <button class="btn-small" onclick="copyWalletAddress()" id="copyAddressBtn">
                     📋 Copy Wallet Address
-                </button>
-                <button class="btn-small" onclick="showQRCode()" id="qrCodeBtn">
-                    📱 Show QR Code
                 </button>
             </div>
         </div>
@@ -105,7 +113,7 @@
                     <span class="icon">🎫</span>
                     <span>Premium</span>
                 </button>
-                <button class="action-btn" onclick="contactSupport()" id="supportBtn">
+                <button class="action-btn" onclick="showSupport()" id="supportBtn">
                     <span class="icon">🆘</span>
                     <span>Support</span>
                 </button>
@@ -211,10 +219,6 @@
                     <button class="method-btn" onclick="selectWithdrawMethod('paypal')" id="paypalBtn">
                         <span class="method-icon">💼</span>
                         <span>PayPal</span>
-                    </button>
-                    <button class="method-btn" onclick="selectWithdrawMethod('bank_transfer')" id="bankBtn">
-                        <span class="method-icon">🏦</span>
-                        <span>Bank Transfer</span>
                     </button>
                     <button class="method-btn" onclick="selectWithdrawMethod('crypto')" id="cryptoBtn">
                         <span class="method-icon">₿</span>
@@ -379,9 +383,9 @@
                 <div class="pricing">
                     <div class="price-card">
                         <h4>Monthly Plan</h4>
-                        <div class="price">5 BOM</div>
+                        <div class="price">3 BOM</div>
                         <div class="period">per month</div>
-                        <div class="usd-price">$5.00 USD</div>
+                        <div class="usd-price">$3.00 USD</div>
                         <button class="btn-primary" onclick="upgradeToPremium('monthly')" id="upgradeMonthlyBtn">
                             💎 Upgrade Monthly
                         </button>
@@ -389,9 +393,9 @@
                     
                     <div class="price-card featured">
                         <h4>Yearly Plan (Best Value)</h4>
-                        <div class="price">50 BOM</div>
+                        <div class="price">30 BOM</div>
                         <div class="period">per year</div>
-                        <div class="usd-price">$50.00 USD</div>
+                        <div class="usd-price">$30.00 USD</div>
                         <div class="savings">Save 2 months!</div>
                         <button class="btn-primary" onclick="upgradeToPremium('yearly')" id="upgradeYearlyBtn">
                             🏆 Upgrade Yearly
@@ -480,14 +484,12 @@
         <!-- Footer -->
         <footer class="footer">
             <div class="footer-links">
-                <a href="#" onclick="showTerms()">Terms of Service</a>
-                <a href="#" onclick="showPrivacy()">Privacy Policy</a>
-                <a href="#" onclick="contactSupport()">Support</a>
-                <a href="#" onclick="tg.openTelegramLink('https://t.me/Botomics')">Updates</a>
+                <a href="javascript:void(0)" onclick="showSupport()">🆘 Support</a>
+                <a href="javascript:void(0)" onclick="showTerms()">📋 Terms</a>
+                <a href="javascript:void(0)" onclick="showPrivacy()">🔒 Privacy</a>
             </div>
             <p class="copyright">
-                Powered by <strong>Botomics</strong> • Version 2.0.0 • 
-                <span id="currentYear">2024</span>
+                Powered by <strong>Botomics</strong> • Version 2.0.0 • <span id="currentYear">2024</span>
             </p>
             <p class="disclaimer">
                 Botomics (BOM) is a proprietary digital currency. 1 BOM = $1.00 USD fixed rate.
@@ -495,50 +497,50 @@
         </footer>
     </div>
 
-    <!-- Modal for QR Code -->
-    <div class="modal hidden" id="qrModal">
-        <div class="modal-content">
-            <h3>📱 Wallet QR Code</h3>
-            <div class="qr-container" id="qrContainer">
-                <!-- QR code will be generated here -->
-            </div>
-            <p class="qr-address" id="qrAddress">Loading...</p>
-            <button class="btn-secondary" onclick="closeModal('qrModal')">
-                Close
-            </button>
-        </div>
-    </div>
-
-    <!-- Modal for Terms -->
-    <div class="modal hidden" id="termsModal">
-        <div class="modal-content">
-            <h3>📋 Terms of Service</h3>
-            <div class="modal-body">
-                <!-- Terms content -->
-            </div>
-            <button class="btn-secondary" onclick="closeModal('termsModal')">
-                Close
-            </button>
-        </div>
-    </div>
-
-    <!-- Modal for Privacy -->
-    <div class="modal hidden" id="privacyModal">
-        <div class="modal-content">
-            <h3>🔒 Privacy Policy</h3>
-            <div class="modal-body">
-                <!-- Privacy content -->
-            </div>
-            <button class="btn-secondary" onclick="closeModal('privacyModal')">
-                Close
-            </button>
-        </div>
-    </div>
-
+    <!-- JavaScript -->
     <script src="app.js"></script>
     <script>
-        // Set current year in footer
+        // Set current year
         document.getElementById('currentYear').textContent = new Date().getFullYear();
+        
+        // FAQ toggle function
+        function toggleFAQ(index) {
+            const answer = document.querySelector(`.faq-item:nth-child(${index}) .faq-answer`);
+            answer.classList.toggle('hidden');
+        }
+        
+        // Modal functions
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+        
+        function showTerms() {
+            const terms = `
+                <h3>📋 Botomics Wallet Terms</h3>
+                <p><strong>Last Updated:</strong> ${new Date().toLocaleDateString()}</p>
+                <p>1 BOM = $1.00 USD fixed rate</p>
+                <p>Minimum deposit: 5 BOM ($5.00)</p>
+                <p>Minimum withdrawal: 20 BOM ($20.00)</p>
+                <p>Transfers are instant and irreversible</p>
+                <p>Contact @BotomicsSupportBot for support</p>
+            `;
+            showAlert(terms, 'info');
+        }
+        
+        function showPrivacy() {
+            const privacy = `
+                <h3>🔒 Privacy Policy</h3>
+                <p>We store your wallet balance and transaction history securely.</p>
+                <p>Your Telegram ID is used to identify your wallet.</p>
+                <p>Transaction data is encrypted and secure.</p>
+                <p>Contact @BotomicsSupportBot for data deletion requests.</p>
+            `;
+            showAlert(privacy, 'info');
+        }
         
         // Initialize form event listeners
         document.addEventListener('DOMContentLoaded', function() {
@@ -558,8 +560,7 @@
             if (transferAmountInput) {
                 transferAmountInput.addEventListener('input', function() {
                     const amount = parseFloat(this.value) || 0;
-                    const balance = currentBalance ? currentBalance.balance : 0;
-                    if (amount > balance) {
+                    if (window.currentBalance && amount > window.currentBalance.balance) {
                         this.style.borderColor = '#e74c3c';
                     } else {
                         this.style.borderColor = '';
@@ -594,46 +595,6 @@
                 });
             }
         });
-        
-        // FAQ toggle function
-        function toggleFAQ(index) {
-            const answer = document.querySelector(`.faq-item:nth-child(${index}) .faq-answer`);
-            answer.classList.toggle('hidden');
-        }
-        
-        // Modal functions
-        function showModal(modalId) {
-            document.getElementById(modalId).classList.remove('hidden');
-        }
-        
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.add('hidden');
-        }
-        
-        function showTerms() {
-            showModal('termsModal');
-        }
-        
-        function showPrivacy() {
-            showModal('privacyModal');
-        }
-        
-        function showQRCode() {
-            if (currentUser) {
-                const address = `BOTOMICS_${currentUser.id}`;
-                document.getElementById('qrAddress').textContent = address;
-                // In production, generate actual QR code here
-                document.getElementById('qrContainer').innerHTML = `
-                    <div style="text-align: center; padding: 20px;">
-                        <div style="background: #f0f0f0; padding: 20px; display: inline-block;">
-                            <div style="font-size: 24px;">📱</div>
-                            <p>QR Code would be generated here</p>
-                        </div>
-                    </div>
-                `;
-                showModal('qrModal');
-            }
-        }
     </script>
 </body>
 </html>

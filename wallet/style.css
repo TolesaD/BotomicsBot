@@ -1,11 +1,4 @@
-/* Botomics Wallet - Main Stylesheet */
-
-/* Reset and Base */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+/* Botomics Wallet - Production Stylesheet */
 
 :root {
     --primary-color: #0088cc;
@@ -24,19 +17,25 @@
     --transition: all 0.3s ease;
 }
 
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
     background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
     min-height: 100vh;
     color: #333;
     line-height: 1.6;
+    padding: 20px;
 }
 
 /* Container */
 .container {
     max-width: 400px;
     margin: 0 auto;
-    padding: 20px;
     min-height: 100vh;
 }
 
@@ -82,31 +81,11 @@ body {
     overflow: hidden;
 }
 
-.balance-card::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 1%, transparent 1%);
-    background-size: 20px 20px;
-    opacity: 0.3;
-    animation: float 20s linear infinite;
-}
-
-@keyframes float {
-    0% { transform: translate(0, 0) rotate(0deg); }
-    100% { transform: translate(-20px, -20px) rotate(360deg); }
-}
-
 .balance-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
-    position: relative;
-    z-index: 1;
 }
 
 .balance-header h2 {
@@ -140,16 +119,12 @@ body {
     font-weight: bold;
     margin: 30px 0;
     text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
-    position: relative;
-    z-index: 1;
 }
 
 .balance-details {
     font-size: 16px;
     opacity: 0.9;
     margin-bottom: 20px;
-    position: relative;
-    z-index: 1;
 }
 
 .currency-rate {
@@ -172,8 +147,6 @@ body {
     gap: 10px;
     justify-content: center;
     margin-top: 20px;
-    position: relative;
-    z-index: 1;
 }
 
 /* Quick Actions */
@@ -240,23 +213,6 @@ body {
     cursor: pointer;
     margin: 20px 0;
     transition: var(--transition);
-    position: relative;
-    overflow: hidden;
-}
-
-.btn-primary::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    transition: 0.5s;
-}
-
-.btn-primary:hover::before {
-    left: 100%;
 }
 
 .btn-primary:hover {
@@ -907,6 +863,7 @@ body {
     margin-bottom: 20px;
 }
 
+/* QR Container */
 .qr-container {
     text-align: center;
     padding: 20px;

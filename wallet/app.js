@@ -1,8 +1,8 @@
-// wallet/app.js - UPDATED FOR Railway.COM DEPLOYMENT
+// wallet/app.js - COMPLETE PRODUCTION VERSION
 const tg = window.Telegram.WebApp;
 
-// Use relative paths for Railway.com deployment
-const BACKEND_URL = '/api';  // Changed from absolute URL
+// Use Railway deployment path
+const BACKEND_URL = '/api';
 const BOTOMICS_SUPPORT_BOT = '@BotomicsSupportBot';
 
 // Telegram Web App initialization
@@ -123,7 +123,7 @@ async function loadBalance() {
             throw new Error('User not available');
         }
         
-        // Call backend API with relative path
+        // Call backend API
         const response = await fetch(`${BACKEND_URL}/wallet/balance?userId=${currentUser.id}`, {
             method: 'GET',
             headers: {
@@ -174,7 +174,7 @@ async function loadBalance() {
     } catch (error) {
         console.error('Balance load error:', error);
         
-        // Show error but don't use mock data in production
+        // Show error state
         document.getElementById('balanceAmount').innerHTML = `
             <div style="color: #e74c3c">Error loading balance</div>
         `;
@@ -186,7 +186,8 @@ async function loadBalance() {
 
 function disableWalletActions() {
     const actions = ['depositBtn', 'withdrawBtn', 'transferBtn', 'submitProofBtn', 'submitDepositBtn', 
-                     'submitWithdrawBtn', 'submitTransferBtn', 'copyAddressBtn', 'qrCodeBtn'];
+                     'submitWithdrawBtn', 'submitTransferBtn', 'copyAddressBtn', 'qrCodeBtn',
+                     'upgradeMonthlyBtn', 'upgradeYearlyBtn', 'upgradePremiumBtn'];
     actions.forEach(id => {
         const btn = document.getElementById(id);
         if (btn) {
@@ -199,7 +200,8 @@ function disableWalletActions() {
 
 function enableWalletActions() {
     const actions = ['depositBtn', 'withdrawBtn', 'transferBtn', 'submitProofBtn', 'submitDepositBtn',
-                     'submitWithdrawBtn', 'submitTransferBtn', 'copyAddressBtn', 'qrCodeBtn'];
+                     'submitWithdrawBtn', 'submitTransferBtn', 'copyAddressBtn', 'qrCodeBtn',
+                     'upgradeMonthlyBtn', 'upgradeYearlyBtn', 'upgradePremiumBtn'];
     actions.forEach(id => {
         const btn = document.getElementById(id);
         if (btn) {
@@ -249,7 +251,7 @@ async function loadSubscription() {
     } catch (error) {
         console.error('Subscription load error:', error);
         
-        // Fallback to mock data
+        // Fallback to freemium
         const mockSubscription = {
             tier: 'freemium',
             autoRenew: false,
@@ -357,42 +359,14 @@ async function loadHistory(page = 1, filters = {}) {
     } catch (error) {
         console.error('History load error:', error);
         
-        // Fallback to mock data
-        const mockTransactions = [
-            {
-                id: '1',
-                type: 'deposit',
-                amount: 50.00,
-                currency: 'BOM',
-                description: 'Initial deposit',
-                status: 'completed',
-                created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-            },
-            {
-                id: '2',
-                type: 'subscription',
-                amount: -5.00,
-                currency: 'BOM',
-                description: 'Premium subscription',
-                status: 'completed',
-                created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-            },
-            {
-                id: '3',
-                type: 'transfer',
-                amount: -10.00,
-                currency: 'BOM',
-                description: 'Transfer to @friend',
-                status: 'completed',
-                created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
-            }
-        ];
+        // Show empty state
+        const mockTransactions = [];
         
         currentTransactions = mockTransactions;
         displayTransactions(mockTransactions, {
             currentPage: 1,
             totalPages: 1,
-            totalItems: 3
+            totalItems: 0
         });
         
         return { transactions: mockTransactions, pagination: { currentPage: 1, totalPages: 1 } };
@@ -559,11 +533,6 @@ function selectWithdrawMethod(method) {
             detailsLabel.textContent = 'PayPal Email:';
             detailsHint.textContent = 'Enter the PayPal email address where you want to receive funds';
             summaryMethod.textContent = 'PayPal';
-            break;
-        case 'bank_transfer':
-            detailsLabel.textContent = 'Bank Details:';
-            detailsHint.textContent = 'Enter your bank account details (Account Name, Number, Bank Name, SWIFT/IBAN)';
-            summaryMethod.textContent = 'Bank Transfer';
             break;
         case 'crypto':
             detailsLabel.textContent = 'Crypto Wallet Address:';
@@ -1018,12 +987,6 @@ async function safeApiCall(endpoint, options = {}) {
         throw error;
     }
 }
-
-// Update existing API calls to use safeApiCall
-// Example: In submitDepositProof, change:
-// const uploadResponse = await fetch(`${BACKEND_URL}/upload/proof`, ...)
-// to:
-// const uploadData = await safeApiCall('/upload/proof', { method: 'POST', body: formData });
 
 // Initialize when Telegram Web App is ready
 tg.ready();

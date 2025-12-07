@@ -1,8 +1,10 @@
-// src/handlers/platformAdminHandler.js - COMPLETE FIXED VERSION
+// src/handlers/platformAdminHandler.js - COMPLETE FIXED VERSION WITH WALLET ADMIN
 const { Markup } = require('telegraf');
 const { User, Bot, UserLog, Feedback, BroadcastHistory, Admin } = require('../models');
 const { formatNumber } = require('../utils/helpers');
 const MiniBotManager = require('../services/MiniBotManager');
+const WalletService = require('../services/walletService'); // ADDED
+const SubscriptionService = require('../services/subscriptionService'); // ADDED
 
 // Store admin management sessions
 const platformAdminSessions = new Map();
@@ -29,7 +31,7 @@ class PlatformAdminHandler {
     }
   }
 
-  // Platform admin dashboard
+  // Platform admin dashboard - UPDATED WITH WALLET
   static async platformDashboard(ctx) {
     try {
       if (!this.isPlatformCreator(ctx.from.id)) {
@@ -46,7 +48,8 @@ class PlatformAdminHandler {
         totalMessages,
         pendingMessages,
         totalBroadcasts,
-        todayUsers
+        todayUsers,
+        walletStats // ADDED
       ] = await Promise.all([
         User.count(),
         User.count({ 
@@ -67,7 +70,8 @@ class PlatformAdminHandler {
               [require('sequelize').Op.gte]: new Date(new Date() - 24 * 60 * 60 * 1000)
             }
           }
-        })
+        }),
+        WalletService.getWalletStats() // ADDED
       ]);
 
       const dashboardMessage = `👑 *Platform Admin Dashboard*\n\n` +
@@ -80,11 +84,18 @@ class PlatformAdminHandler {
         `💬 Total Messages: ${formatNumber(totalMessages)}\n` +
         `📨 Pending Messages: ${formatNumber(pendingMessages)}\n` +
         `📢 Total Broadcasts: ${formatNumber(totalBroadcasts)}\n\n` +
+        `💰 *Wallet Statistics:*\n` +
+        `🏦 Total Wallets: ${formatNumber(walletStats.totalWallets)}\n` +
+        `❄️ Frozen Wallets: ${formatNumber(walletStats.frozenWallets)}\n` +
+        `💰 Total BOM: ${walletStats.totalBalance.toFixed(2)}\n` +
+        `📈 Net Revenue: ${walletStats.netRevenue.toFixed(2)} BOM\n\n` +
         `*Admin Actions:*`;
 
       const keyboard = Markup.inlineKeyboard([
         [Markup.button.callback('👥 User Management', 'platform_users')],
         [Markup.button.callback('🤖 Bot Management', 'platform_bots')],
+        [Markup.button.callback('💰 Wallet Admin', 'platform_wallet_admin')], // ADDED
+        [Markup.button.callback('🎫 Subscription Admin', 'platform_subscription_admin')], // ADDED
         [Markup.button.callback('📢 Platform Broadcast', 'platform_broadcast')],
         [Markup.button.callback('🚫 Ban Management', 'platform_bans')],
         [Markup.button.callback('📊 Advanced Analytics', 'platform_analytics')],
@@ -118,6 +129,374 @@ class PlatformAdminHandler {
       } else {
         await ctx.reply('❌ Error loading platform dashboard.');
       }
+    }
+  }
+
+  // ==================== WALLET ADMIN METHODS ====================
+
+  // Wallet admin dashboard
+  static async walletAdminDashboard(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+      
+      const stats = await WalletService.getWalletStats();
+      
+      const message = `🏦 *Wallet System Admin*\n\n` +
+        `*Platform Statistics:*\n` +
+        `▫️ Total Wallets: ${stats.totalWallets}\n` +
+        `▫️ Active Wallets: ${stats.activeWallets}\n` +
+        `▫️ Frozen Wallets: ${stats.frozenWallets}\n` +
+        `▫️ Total Balance: ${stats.totalBalance.toFixed(2)} BOM\n` +
+        `▫️ Total Deposits: ${stats.totalDeposits.toFixed(2)} BOM\n` +
+        `▫️ Total Withdrawals: ${stats.totalWithdrawals.toFixed(2)} BOM\n` +
+        `▫️ Net Revenue: ${stats.netRevenue.toFixed(2)} BOM\n\n` +
+        `*Quick Actions:*`;
+      
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📥 Pending Deposits', 'platform_pending_deposits')],
+        [Markup.button.callback('📤 Pending Withdrawals', 'platform_pending_withdrawals')],
+        [Markup.button.callback('💰 Add BOM to User', 'platform_add_bom')],
+        [Markup.button.callback('🔧 Adjust Balance', 'platform_adjust_balance')],
+        [Markup.button.callback('❄️ Freeze Wallet', 'platform_freeze_wallet')],
+        [Markup.button.callback('✅ Unfreeze Wallet', 'platform_unfreeze_wallet')],
+        [Markup.button.callback('📊 Wallet Report', 'platform_wallet_report')],
+        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+      ]);
+      
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
+      
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery();
+      }
+    } catch (error) {
+      console.error('Wallet admin dashboard error:', error);
+      await ctx.reply('❌ Error loading wallet dashboard.');
+    }
+  }
+
+  // Show pending deposits
+  static async showPendingDeposits(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+
+      const deposits = await WalletService.getPendingDeposits();
+      
+      if (deposits.length === 0) {
+        const keyboard = Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back to Wallet Admin', 'platform_wallet_admin')]
+        ]);
+        
+        await ctx.editMessageText(
+          '📥 *No Pending Deposits*\n\n' +
+          'There are no pending deposit requests at the moment.',
+          { parse_mode: 'Markdown', ...keyboard }
+        );
+        return;
+      }
+
+      let message = `📥 *Pending Deposits* (${deposits.length})\n\n`;
+      
+      deposits.forEach((deposit, index) => {
+        const date = new Date(deposit.created_at).toLocaleString();
+        message += `*${index + 1}. Deposit Request*\n`;
+        message += `   User: ${deposit.Wallet?.user_id || 'Unknown'}\n`;
+        message += `   Amount: ${parseFloat(deposit.amount).toFixed(2)} BOM\n`;
+        message += `   Description: ${deposit.description || 'No description'}\n`;
+        message += `   Date: ${date}\n`;
+        message += `   ID: ${deposit.id}\n\n`;
+      });
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Approve Deposit', 'platform_approve_deposit')],
+        [Markup.button.callback('❌ Reject Deposit', 'platform_reject_deposit')],
+        [Markup.button.callback('🔙 Back to Wallet Admin', 'platform_wallet_admin')]
+      ]);
+
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+      
+    } catch (error) {
+      console.error('Show pending deposits error:', error);
+      await ctx.answerCbQuery('❌ Error loading pending deposits');
+    }
+  }
+
+  // Show pending withdrawals
+  static async showPendingWithdrawals(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+
+      const withdrawals = await WalletService.getPendingWithdrawals();
+      
+      if (withdrawals.length === 0) {
+        const keyboard = Markup.inlineKeyboard([
+          [Markup.button.callback('🔙 Back to Wallet Admin', 'platform_wallet_admin')]
+        ]);
+        
+        await ctx.editMessageText(
+          '📤 *No Pending Withdrawals*\n\n' +
+          'There are no pending withdrawal requests at the moment.',
+          { parse_mode: 'Markdown', ...keyboard }
+        );
+        return;
+      }
+
+      let message = `📤 *Pending Withdrawals* (${withdrawals.length})\n\n`;
+      
+      withdrawals.forEach((withdrawal, index) => {
+        const user = withdrawal.User;
+        const userName = user ? (user.username ? `@${user.username}` : user.first_name) : 'Unknown';
+        
+        message += `*${index + 1}. Withdrawal Request*\n`;
+        message += `   User: ${userName} (ID: ${withdrawal.user_id})\n`;
+        message += `   Amount: ${parseFloat(withdrawal.amount).toFixed(2)} BOM ($${parseFloat(withdrawal.usd_value).toFixed(2)})\n`;
+        message += `   Method: ${withdrawal.method}\n`;
+        message += `   Details: ${withdrawal.payout_details}\n`;
+        message += `   Date: ${new Date(withdrawal.created_at).toLocaleString()}\n`;
+        message += `   ID: ${withdrawal.id}\n\n`;
+      });
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Approve Withdrawal', 'platform_approve_withdrawal')],
+        [Markup.button.callback('❌ Reject Withdrawal', 'platform_reject_withdrawal')],
+        [Markup.button.callback('🎉 Mark as Completed', 'platform_complete_withdrawal')],
+        [Markup.button.callback('🔙 Back to Wallet Admin', 'platform_wallet_admin')]
+      ]);
+
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        ...keyboard
+      });
+      
+    } catch (error) {
+      console.error('Show pending withdrawals error:', error);
+      await ctx.answerCbQuery('❌ Error loading pending withdrawals');
+    }
+  }
+
+  // Start add BOM process
+  static async startAddBOM(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'add_bom',
+        step: 'awaiting_user_id'
+      });
+
+      const message = `💰 *Add BOM to User*\n\n` +
+        `Please provide the user's Telegram ID or username:\n\n` +
+        `*Examples:*\n` +
+        `• 123456789 (User ID)\n` +
+        `• @username\n\n` +
+        `*Cancel:* Type /cancel`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_wallet_admin')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
+
+    } catch (error) {
+      console.error('Start add BOM error:', error);
+      await ctx.answerCbQuery('❌ Error starting add BOM process');
+    }
+  }
+
+  // Start freeze wallet process
+  static async startFreezeWallet(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'freeze_wallet',
+        step: 'awaiting_user_id'
+      });
+
+      const message = `❄️ *Freeze Wallet*\n\n` +
+        `Please provide the user's Telegram ID or username to freeze:\n\n` +
+        `*Examples:*\n` +
+        `• 123456789 (User ID)\n` +
+        `• @username\n\n` +
+        `*Cancel:* Type /cancel`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_wallet_admin')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
+
+    } catch (error) {
+      console.error('Start freeze wallet error:', error);
+      await ctx.answerCbQuery('❌ Error starting freeze process');
+    }
+  }
+
+  // Start unfreeze wallet process
+  static async startUnfreezeWallet(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'unfreeze_wallet',
+        step: 'awaiting_user_id'
+      });
+
+      const message = `✅ *Unfreeze Wallet*\n\n` +
+        `Please provide the user's Telegram ID or username to unfreeze:\n\n` +
+        `*Examples:*\n` +
+        `• 123456789 (User ID)\n` +
+        `• @username\n\n` +
+        `*Cancel:* Type /cancel`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_wallet_admin')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
+
+    } catch (error) {
+      console.error('Start unfreeze wallet error:', error);
+      await ctx.answerCbQuery('❌ Error starting unfreeze process');
+    }
+  }
+
+  // Subscription admin dashboard
+  static async subscriptionAdminDashboard(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+
+      const stats = await SubscriptionService.getSubscriptionStats();
+      
+      const message = `🎫 *Subscription Admin*\n\n` +
+        `*Statistics:*\n` +
+        `▫️ Total Subscriptions: ${stats.totalSubscriptions}\n` +
+        `▫️ Active Premium: ${stats.activeSubscriptions}\n` +
+        `▫️ Freemium Users: ${stats.freemiumUsers}\n` +
+        `▫️ Premium Users: ${stats.premiumUsers}\n` +
+        `▫️ Monthly Revenue: ${stats.monthlyRevenue.toFixed(2)} BOM\n` +
+        `▫️ Annual Revenue: ${stats.estimatedAnnualRevenue.toFixed(2)} BOM\n` +
+        `▫️ Conversion Rate: ${stats.conversionRate.toFixed(1)}%\n\n` +
+        `*Actions:*`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('⭐ Grant Premium', 'platform_grant_premium')],
+        [Markup.button.callback('❌ Revoke Premium', 'platform_revoke_premium')],
+        [Markup.button.callback('📅 Extend Premium', 'platform_extend_premium')],
+        [Markup.button.callback('🔄 Force Renewal Check', 'platform_force_renewal')],
+        [Markup.button.callback('🔙 Back to Dashboard', 'platform_dashboard')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
+      
+      if (ctx.updateType === 'callback_query') {
+        await ctx.answerCbQuery();
+      }
+    } catch (error) {
+      console.error('Subscription admin dashboard error:', error);
+      await ctx.reply('❌ Error loading subscription dashboard.');
+    }
+  }
+
+  // Start grant premium process
+  static async startGrantPremium(ctx) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.reply('❌ Admin access required.');
+        return;
+      }
+
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'grant_premium',
+        step: 'awaiting_user_id'
+      });
+
+      const message = `⭐ *Grant Premium Subscription*\n\n` +
+        `Please provide the user's Telegram ID or username:\n\n` +
+        `*Examples:*\n` +
+        `• 123456789 (User ID)\n` +
+        `• @username\n\n` +
+        `*Note:* This will give premium for 30 days without charging BOM.\n\n` +
+        `*Cancel:* Type /cancel`;
+
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🚫 Cancel', 'platform_subscription_admin')]
+      ]);
+
+      if (ctx.updateType === 'callback_query') {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          ...keyboard
+        });
+        await ctx.answerCbQuery();
+      } else {
+        await ctx.replyWithMarkdown(message, keyboard);
+      }
+
+    } catch (error) {
+      console.error('Start grant premium error:', error);
+      await ctx.answerCbQuery('❌ Error starting grant premium process');
     }
   }
 
@@ -904,7 +1283,7 @@ static async detailedReports(ctx) {
 
     // FIXED: Safe parsing of database results
     const totalMessages = parseInt(messageStats[0]?.total || 0);
-    const repliedMessages = parseInt(messageStats[0]?.replied || 0);
+    const repliedMessages = parseInt(messagesStats[0]?.replied || 0);
     const totalBroadcasts = parseInt(broadcastStats[0]?.total || 0);
     const totalRecipients = parseInt(broadcastStats[0]?.total_recipients || 0);
     const avgSuccessRate = parseFloat(broadcastStats[0]?.avg_success_rate || 0);
@@ -1121,7 +1500,9 @@ static async detailedReports(ctx) {
     }
   }
 
-  // Handle platform admin text input
+  // ==================== PROCESS ADMIN ACTIONS ====================
+
+  // Handle platform admin text input - UPDATED
   static async handlePlatformAdminInput(ctx) {
     try {
       const userId = ctx.from.id;
@@ -1131,12 +1512,13 @@ static async detailedReports(ctx) {
 
       if (ctx.message.text === '/cancel') {
         platformAdminSessions.delete(userId);
-        await ctx.reply('❌ Platform admin action cancelled\\.', { parse_mode: 'MarkdownV2' });
+        await ctx.reply('❌ Platform admin action cancelled.', { parse_mode: 'Markdown' });
         return;
       }
 
       const input = ctx.message.text.trim();
 
+      // Existing actions
       if (session.action === 'platform_broadcast' && session.step === 'awaiting_message') {
         await this.sendPlatformBroadcast(ctx, input);
       } else if ((session.action === 'ban_user' || session.action === 'unban_user') && session.step === 'awaiting_user_id') {
@@ -1146,13 +1528,425 @@ static async detailedReports(ctx) {
       } else if (session.action === 'delete_bot' && session.step === 'awaiting_bot_id') {
         await this.processBotDeletion(ctx, input);
       }
+      
+      // NEW WALLET ACTIONS
+      else if (session.action === 'add_bom' && session.step === 'awaiting_user_id') {
+        await this.processAddBOMStep1(ctx, input);
+      } else if (session.action === 'add_bom_amount' && session.step === 'awaiting_amount') {
+        await this.processAddBOMStep2(ctx, session.userIdentifier, input);
+      } else if (session.action === 'freeze_wallet' && session.step === 'awaiting_user_id') {
+        await this.processFreezeWalletStep1(ctx, input);
+      } else if (session.action === 'freeze_wallet_reason' && session.step === 'awaiting_reason') {
+        await this.processFreezeWalletStep2(ctx, session.userId, input);
+      } else if (session.action === 'unfreeze_wallet' && session.step === 'awaiting_user_id') {
+        await this.processUnfreezeWallet(ctx, input);
+      } else if (session.action === 'grant_premium' && session.step === 'awaiting_user_id') {
+        await this.processGrantPremiumStep1(ctx, input);
+      } else if (session.action === 'grant_premium_duration' && session.step === 'awaiting_duration') {
+        await this.processGrantPremiumStep2(ctx, session.userId, input);
+      }
 
       platformAdminSessions.delete(userId);
 
     } catch (error) {
       console.error('Platform admin input error:', error);
-      await ctx.reply('❌ Error processing platform admin action\\.', { parse_mode: 'MarkdownV2' });
+      await ctx.reply(`❌ Error: ${error.message}`, { parse_mode: 'Markdown' });
       platformAdminSessions.delete(ctx.from.id);
+    }
+  }
+
+  // Process add BOM step 1: Get user
+  static async processAddBOMStep1(ctx, userIdentifier) {
+    try {
+      // Find user
+      let user;
+      if (isNaN(userIdentifier)) {
+        const username = userIdentifier.replace('@', '').trim();
+        user = await User.findOne({ where: { username: username } });
+      } else {
+        user = await User.findOne({ where: { telegram_id: parseInt(userIdentifier) } });
+      }
+
+      if (!user) {
+        await ctx.reply('❌ User not found. Please check the ID or username.');
+        return;
+      }
+
+      // Store user and ask for amount
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'add_bom_amount',
+        step: 'awaiting_amount',
+        userIdentifier: userIdentifier,
+        userId: user.telegram_id
+      });
+
+      await ctx.reply(
+        `💰 *Add BOM to User*\n\n` +
+        `User: ${user.username ? `@${user.username}` : user.first_name} (ID: ${user.telegram_id})\n\n` +
+        `Please enter the amount of BOM to add:\n\n` +
+        `*Examples:*\n` +
+        `• 50 (for 50 BOM)\n` +
+        `• 100.50 (for 100.50 BOM)\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+
+    } catch (error) {
+      console.error('Process add BOM step 1 error:', error);
+      await ctx.reply('❌ Error processing request.');
+    }
+  }
+
+  // Process add BOM step 2: Add BOM
+  static async processAddBOMStep2(ctx, userIdentifier, amountInput) {
+    try {
+      const amount = parseFloat(amountInput);
+      
+      if (!amount || amount <= 0 || isNaN(amount)) {
+        await ctx.reply('❌ Invalid amount. Please enter a positive number.');
+        return;
+      }
+
+      let userId;
+      if (isNaN(userIdentifier)) {
+        const username = userIdentifier.replace('@', '').trim();
+        const user = await User.findOne({ where: { username: username } });
+        if (!user) {
+          await ctx.reply('❌ User not found.');
+          return;
+        }
+        userId = user.telegram_id;
+      } else {
+        userId = parseInt(userIdentifier);
+      }
+
+      // Confirm action
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'add_bom_confirm',
+        step: 'awaiting_confirmation',
+        userId: userId,
+        amount: amount,
+        userIdentifier: userIdentifier
+      });
+
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback('✅ Yes, Add BOM', `platform_confirm_add_bom_${userId}_${amount}`),
+          Markup.button.callback('❌ Cancel', 'platform_wallet_admin')
+        ]
+      ]);
+
+      await ctx.reply(
+        `🔍 *Confirm BOM Addition*\n\n` +
+        `*User ID:* ${userId}\n` +
+        `*Amount:* ${amount.toFixed(2)} BOM ($${amount.toFixed(2)})\n\n` +
+        `*Rate:* 1 BOM = $1.00 USD\n\n` +
+        `Proceed with this transaction?`,
+        { parse_mode: 'Markdown', ...keyboard }
+      );
+
+    } catch (error) {
+      console.error('Process add BOM step 2 error:', error);
+      await ctx.reply('❌ Error processing amount.');
+    }
+  }
+
+  // Confirm and execute add BOM
+  static async confirmAddBOM(ctx, userId, amount) {
+    try {
+      if (!this.isPlatformCreator(ctx.from.id)) {
+        await ctx.answerCbQuery('❌ Admin access required');
+        return;
+      }
+
+      await ctx.answerCbQuery('🔄 Adding BOM...');
+
+      const result = await WalletService.adminAdjustBalance(
+        userId, 
+        amount, 
+        'Manual BOM addition by admin', 
+        ctx.from.id
+      );
+
+      // Get user info for message
+      const user = await User.findOne({ where: { telegram_id: userId } });
+      const userName = user ? (user.username ? `@${user.username}` : user.first_name) : `User ${userId}`;
+
+      await ctx.editMessageText(
+        `✅ *BOM Added Successfully!*\n\n` +
+        `*User:* ${userName}\n` +
+        `*User ID:* ${userId}\n` +
+        `*Amount Added:* ${amount.toFixed(2)} BOM ($${amount.toFixed(2)})\n` +
+        `*New Balance:* ${result.newBalance.toFixed(2)} BOM\n` +
+        `*Transaction ID:* ${result.transaction.id}\n\n` +
+        `User has been notified of the deposit.`,
+        { 
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('🏦 Back to Wallet Admin', 'platform_wallet_admin')]
+          ])
+        }
+      );
+
+      // Notify the user
+      try {
+        await ctx.telegram.sendMessage(
+          userId,
+          `💰 *BOM Deposit Confirmed!*\n\n` +
+          `✅ Your wallet has been credited with ${amount.toFixed(2)} BOM ($${amount.toFixed(2)}).\n\n` +
+          `*New Balance:* ${result.newBalance.toFixed(2)} BOM\n` +
+          `*Transaction:* Manual BOM addition by admin\n\n` +
+          `Check your wallet: /wallet`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (notifyError) {
+        console.log('Could not notify user:', notifyError.message);
+      }
+
+    } catch (error) {
+      console.error('Confirm add BOM error:', error);
+      await ctx.editMessageText(`❌ Error: ${error.message}`);
+    }
+  }
+
+  // Process freeze wallet step 1: Get user
+  static async processFreezeWalletStep1(ctx, userIdentifier) {
+    try {
+      // Find user
+      let user;
+      if (isNaN(userIdentifier)) {
+        const username = userIdentifier.replace('@', '').trim();
+        user = await User.findOne({ where: { username: username } });
+      } else {
+        user = await User.findOne({ where: { telegram_id: parseInt(userIdentifier) } });
+      }
+
+      if (!user) {
+        await ctx.reply('❌ User not found. Please check the ID or username.');
+        return;
+      }
+
+      // Check if already frozen
+      const wallet = await WalletService.getBalance(user.telegram_id);
+      if (wallet.isFrozen) {
+        await ctx.reply('❌ This wallet is already frozen.');
+        return;
+      }
+
+      // Store user and ask for reason
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'freeze_wallet_reason',
+        step: 'awaiting_reason',
+        userId: user.telegram_id
+      });
+
+      await ctx.reply(
+        `❄️ *Freeze Wallet*\n\n` +
+        `User: ${user.username ? `@${user.username}` : user.first_name} (ID: ${user.telegram_id})\n` +
+        `Current Balance: ${wallet.balance.toFixed(2)} BOM\n\n` +
+        `Please enter the reason for freezing this wallet:\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+
+    } catch (error) {
+      console.error('Process freeze wallet step 1 error:', error);
+      await ctx.reply('❌ Error processing request.');
+    }
+  }
+
+  // Process freeze wallet step 2: Freeze with reason
+  static async processFreezeWalletStep2(ctx, userId, reason) {
+    try {
+      if (!reason || reason.trim() === '') {
+        await ctx.reply('❌ Please provide a reason for freezing.');
+        return;
+      }
+
+      await WalletService.freezeWallet(userId, reason.trim(), ctx.from.id);
+
+      // Get user info for message
+      const user = await User.findOne({ where: { telegram_id: userId } });
+      const userName = user ? (user.username ? `@${user.username}` : user.first_name) : `User ${userId}`;
+
+      await ctx.reply(
+        `❄️ *Wallet Frozen Successfully!*\n\n` +
+        `*User:* ${userName}\n` +
+        `*User ID:* ${userId}\n` +
+        `*Reason:* ${reason}\n\n` +
+        `Wallet is now frozen and cannot perform any transactions.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Notify user
+      try {
+        await ctx.telegram.sendMessage(
+          userId,
+          `❄️ *Wallet Frozen*\n\n` +
+          `Your Botomics wallet has been frozen by platform admin.\n\n` +
+          `*Reason:* ${reason}\n\n` +
+          `All transactions (deposits, withdrawals, transfers) are disabled.\n` +
+          `Contact @BotomicsSupportBot for more information.`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (notifyError) {
+        console.log('Could not notify user:', notifyError.message);
+      }
+
+      // Return to wallet admin
+      await this.walletAdminDashboard(ctx);
+
+    } catch (error) {
+      console.error('Process freeze wallet step 2 error:', error);
+      await ctx.reply(`❌ Error: ${error.message}`);
+    }
+  }
+
+  // Process unfreeze wallet
+  static async processUnfreezeWallet(ctx, userIdentifier) {
+    try {
+      // Find user
+      let user;
+      if (isNaN(userIdentifier)) {
+        const username = userIdentifier.replace('@', '').trim();
+        user = await User.findOne({ where: { username: username } });
+      } else {
+        user = await User.findOne({ where: { telegram_id: parseInt(userIdentifier) } });
+      }
+
+      if (!user) {
+        await ctx.reply('❌ User not found. Please check the ID or username.');
+        return;
+      }
+
+      await WalletService.unfreezeWallet(user.telegram_id, ctx.from.id);
+
+      await ctx.reply(
+        `✅ *Wallet Unfrozen Successfully!*\n\n` +
+        `*User:* ${user.username ? `@${user.username}` : user.first_name}\n` +
+        `*User ID:* ${user.telegram_id}\n\n` +
+        `Wallet is now active and can perform transactions again.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Notify user
+      try {
+        await ctx.telegram.sendMessage(
+          user.telegram_id,
+          `✅ *Wallet Unfrozen*\n\n` +
+          `Your Botomics wallet has been unfrozen by platform admin.\n\n` +
+          `You can now use all wallet features again.\n` +
+          `Check your wallet: /wallet`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (notifyError) {
+        console.log('Could not notify user:', notifyError.message);
+      }
+
+      // Return to wallet admin
+      await this.walletAdminDashboard(ctx);
+
+    } catch (error) {
+      console.error('Process unfreeze wallet error:', error);
+      await ctx.reply(`❌ Error: ${error.message}`);
+    }
+  }
+
+  // Process grant premium step 1: Get user
+  static async processGrantPremiumStep1(ctx, userIdentifier) {
+    try {
+      // Find user
+      let user;
+      if (isNaN(userIdentifier)) {
+        const username = userIdentifier.replace('@', '').trim();
+        user = await User.findOne({ where: { username: username } });
+      } else {
+        user = await User.findOne({ where: { telegram_id: parseInt(userIdentifier) } });
+      }
+
+      if (!user) {
+        await ctx.reply('❌ User not found. Please check the ID or username.');
+        return;
+      }
+
+      // Store user and ask for duration
+      platformAdminSessions.set(ctx.from.id, {
+        action: 'grant_premium_duration',
+        step: 'awaiting_duration',
+        userId: user.telegram_id
+      });
+
+      await ctx.reply(
+        `⭐ *Grant Premium Subscription*\n\n` +
+        `User: ${user.username ? `@${user.username}` : user.first_name} (ID: ${user.telegram_id})\n\n` +
+        `Please enter the duration in days:\n\n` +
+        `*Examples:*\n` +
+        `• 30 (for 30 days)\n` +
+        `• 90 (for 90 days)\n` +
+        `• 365 (for 1 year)\n\n` +
+        `*Cancel:* Type /cancel`,
+        { parse_mode: 'Markdown' }
+      );
+
+    } catch (error) {
+      console.error('Process grant premium step 1 error:', error);
+      await ctx.reply('❌ Error processing request.');
+    }
+  }
+
+  // Process grant premium step 2: Grant premium
+  static async processGrantPremiumStep2(ctx, userId, durationInput) {
+    try {
+      const duration = parseInt(durationInput);
+      
+      if (!duration || duration <= 0 || isNaN(duration)) {
+        await ctx.reply('❌ Invalid duration. Please enter a positive number of days.');
+        return;
+      }
+
+      await SubscriptionService.forceUpdateSubscription(
+        userId, 
+        'premium', 
+        ctx.from.id,
+        `Admin granted premium for ${duration} days`
+      );
+
+      // Get user info for message
+      const user = await User.findOne({ where: { telegram_id: userId } });
+      const userName = user ? (user.username ? `@${user.username}` : user.first_name) : `User ${userId}`;
+
+      await ctx.reply(
+        `⭐ *Premium Granted Successfully!*\n\n` +
+        `*User:* ${userName}\n` +
+        `*User ID:* ${userId}\n` +
+        `*Duration:* ${duration} days\n\n` +
+        `User now has premium features for ${duration} days.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Notify user
+      try {
+        await ctx.telegram.sendMessage(
+          userId,
+          `⭐ *Premium Subscription Activated!*\n\n` +
+          `You have been granted a premium subscription for ${duration} days!\n\n` +
+          `*You now have access to:*\n` +
+          `✅ Unlimited bot creation\n` +
+          `✅ Unlimited broadcasts\n` +
+          `✅ All premium features\n\n` +
+          `Thank you for being part of Botomics! 🚀`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (notifyError) {
+        console.log('Could not notify user:', notifyError.message);
+      }
+
+      // Return to subscription admin
+      await this.subscriptionAdminDashboard(ctx);
+
+    } catch (error) {
+      console.error('Process grant premium step 2 error:', error);
+      await ctx.reply(`❌ Error: ${error.message}`);
     }
   }
 
@@ -1422,7 +2216,7 @@ static async detailedReports(ctx) {
   }
 }
 
-// Register platform admin callbacks
+// Register platform admin callbacks - UPDATED WITH WALLET CALLBACKS
 PlatformAdminHandler.registerCallbacks = (bot) => {
   // Dashboard and main navigation
   bot.action('platform_dashboard', async (ctx) => {
@@ -1441,6 +2235,65 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.botManagement(ctx, 1);
   });
 
+  // NEW: Wallet admin callbacks
+  bot.action('platform_wallet_admin', async (ctx) => {
+    await PlatformAdminHandler.walletAdminDashboard(ctx);
+  });
+
+  bot.action('platform_pending_deposits', async (ctx) => {
+    await PlatformAdminHandler.showPendingDeposits(ctx);
+  });
+
+  bot.action('platform_pending_withdrawals', async (ctx) => {
+    await PlatformAdminHandler.showPendingWithdrawals(ctx);
+  });
+
+  bot.action('platform_add_bom', async (ctx) => {
+    await PlatformAdminHandler.startAddBOM(ctx);
+  });
+
+  bot.action('platform_freeze_wallet', async (ctx) => {
+    await PlatformAdminHandler.startFreezeWallet(ctx);
+  });
+
+  bot.action('platform_unfreeze_wallet', async (ctx) => {
+    await PlatformAdminHandler.startUnfreezeWallet(ctx);
+  });
+
+  bot.action('platform_wallet_report', async (ctx) => {
+    // Implement wallet report
+    await ctx.answerCbQuery('📊 Wallet report coming soon!');
+  });
+
+  // NEW: Subscription admin callbacks
+  bot.action('platform_subscription_admin', async (ctx) => {
+    await PlatformAdminHandler.subscriptionAdminDashboard(ctx);
+  });
+
+  bot.action('platform_grant_premium', async (ctx) => {
+    await PlatformAdminHandler.startGrantPremium(ctx);
+  });
+
+  bot.action('platform_revoke_premium', async (ctx) => {
+    await ctx.answerCbQuery('Feature coming soon!');
+  });
+
+  bot.action('platform_extend_premium', async (ctx) => {
+    await ctx.answerCbQuery('Feature coming soon!');
+  });
+
+  bot.action('platform_force_renewal', async (ctx) => {
+    await ctx.answerCbQuery('Feature coming soon!');
+  });
+
+  // Confirm add BOM callback
+  bot.action(/platform_confirm_add_bom_(\d+)_([\d\.]+)/, async (ctx) => {
+    const userId = parseInt(ctx.match[1]);
+    const amount = parseFloat(ctx.match[2]);
+    await PlatformAdminHandler.confirmAddBOM(ctx, userId, amount);
+  });
+
+  // Existing callbacks (keep as is)
   bot.action('platform_broadcast', async (ctx) => {
     await PlatformAdminHandler.startPlatformBroadcast(ctx);
   });
@@ -1474,7 +2327,7 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.startUnbanUser(ctx);
   });
 
-  // Analytics and stats - IMPLEMENTED FEATURES
+  // Analytics and stats
   bot.action('platform_user_stats', async (ctx) => {
     await PlatformAdminHandler.userStatistics(ctx);
   });
@@ -1483,7 +2336,7 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.detailedReports(ctx);
   });
 
-  // Bot management actions - IMPLEMENTED FEATURES
+  // Bot management actions
   bot.action('platform_toggle_bot', async (ctx) => {
     await PlatformAdminHandler.startToggleBot(ctx);
   });
@@ -1492,7 +2345,7 @@ PlatformAdminHandler.registerCallbacks = (bot) => {
     await PlatformAdminHandler.startDeleteBot(ctx);
   });
 
-  // Export features - IMPLEMENTED FEATURES
+  // Export features
   bot.action('platform_export_users', async (ctx) => {
     await PlatformAdminHandler.exportUsers(ctx);
   });

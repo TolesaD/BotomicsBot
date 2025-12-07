@@ -99,7 +99,7 @@ async function createTables() {
     await client.query(`
       ALTER TABLE withdrawals 
       ADD CONSTRAINT check_withdrawal_method 
-      CHECK (method IN ('paypal', 'bank_transfer', 'crypto', 'other'))
+      CHECK (method IN ('paypal', 'crypto'))
     `);
     
     await client.query(`
