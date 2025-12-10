@@ -1,5 +1,5 @@
 // src/services/subscriptionService.js - COMPLETE PRODUCTION VERSION
-const { UserSubscription, User, Wallet, WalletTransaction, BroadcastHistory } = require('../models');
+const { UserSubscription, User, Wallet, WalletTransaction, BroadcastHistory, Bot, Admin } = require('../models');
 const WalletService = require('./walletService');
 const Sequelize = require('sequelize');
 
@@ -28,6 +28,123 @@ class SubscriptionService {
             console.error('Get subscription tier error:', error);
             return 'freemium'; // Default to freemium on error
         }
+    }
+
+    // Check if user can create a new bot
+    static async canUserCreateBot(userId) {
+      try {
+        // Get user's subscription tier
+        const tier = await this.getSubscriptionTier(userId);
+        
+        // Check if user is banned
+        const user = await User.findOne({ where: { telegram_id: userId } });
+        if (user && user.is_banned) {
+          return {
+            canCreate: false,
+            currentCount: 0,
+            botLimit: 0,
+            remaining: 0,
+            reason: 'User is banned'
+          };
+        }
+        
+        // Count user's existing active bots
+        const botCount = await Bot.count({ 
+          where: { 
+            owner_id: userId,
+            is_active: true 
+          } 
+        });
+        
+        // Set limits based on subscription tier
+        let botLimit;
+        if (tier === 'premium') {
+          botLimit = 50; // Premium users get 50 bots
+        } else {
+          botLimit = 5; // Freemium users get 5 bots
+        }
+        
+        const canCreate = botCount < botLimit;
+        const remaining = Math.max(0, botLimit - botCount);
+        
+        return {
+          canCreate,
+          currentCount: botCount,
+          botLimit,
+          remaining,
+          tier
+        };
+        
+      } catch (error) {
+        console.error('canUserCreateBot error:', error);
+        // Default to freemium limits on error
+        return {
+          canCreate: false,
+          currentCount: 0,
+          botLimit: 5,
+          remaining: 0,
+          reason: 'Error checking subscription'
+        };
+      }
+    }
+    
+    // NEW METHOD: Check if user can add co-admins
+    static async canUserAddCoAdmin(userId, botId) {
+      try {
+        // Get user's subscription tier
+        const tier = await this.getSubscriptionTier(userId);
+        
+        // Premium users have no limit
+        if (tier === 'premium') {
+          return {
+            canAdd: true,
+            currentCount: 0,
+            limit: null, // null means unlimited
+            tier: 'premium',
+            reason: ''
+          };
+        }
+        
+        // Freemium users: count existing co-admins (excluding owner)
+        const bot = await Bot.findByPk(botId);
+        if (!bot) {
+          return {
+            canAdd: false,
+            currentCount: 0,
+            limit: 1,
+            tier: 'freemium',
+            reason: 'Bot not found'
+          };
+        }
+        
+        const coAdminCount = await Admin.count({
+          where: {
+            bot_id: botId,
+            admin_user_id: { [Sequelize.Op.ne]: bot.owner_id }
+          }
+        });
+        
+        // Freemium users can only have 1 co-admin
+        const canAdd = coAdminCount < 1;
+        
+        return {
+          canAdd: canAdd,
+          currentCount: coAdminCount,
+          limit: 1,
+          tier: 'freemium',
+          reason: canAdd ? '' : 'Freemium users are limited to 1 co-admin'
+        };
+        
+      } catch (error) {
+        console.error('canUserAddCoAdmin error:', error);
+        return {
+          canAdd: false,
+          currentCount: 0,
+          limit: 1,
+          tier: 'freemium',
+          reason: 'Error checking co-admin limit'
+        };
+      }
     }
     
     // Get user subscription details
@@ -474,8 +591,6 @@ class SubscriptionService {
         }
     }
 
-    // ==================== FIXED: BROADCAST LIMIT METHODS ====================
-
     // Get weekly broadcast count - FIXED: Use sent_at instead of created_at
     static async getWeeklyBroadcastCount(userId, botId) {
         try {
@@ -486,7 +601,7 @@ class SubscriptionService {
                 where: {
                     bot_id: botId,
                     sent_by: userId,
-                    sent_at: {  // CHANGED: Use sent_at instead of created_at
+                    sent_at: {
                         [Sequelize.Op.gte]: oneWeekAgo
                     }
                 }
@@ -544,8 +659,15 @@ class SubscriptionService {
                 'donation_system': false,
                 'remove_ads': false,
                 'unlimited_broadcasts': false,
-                'advanced_analytics': false
+                'advanced_analytics': false,
+                'unlimited_co_admins': false,
+                'co_admins': false
             };
+            
+            // Check if feature requires premium
+            if (feature === 'co_admins') {
+                return false; // Freemium users have limited co-admins
+            }
             
             return freemiumLimits[feature] || false;
         } catch (error) {
@@ -560,6 +682,13 @@ class SubscriptionService {
             const tier = await this.getSubscriptionTier(userId);
             const isPremium = tier === 'premium';
             
+            // Get co-admin limit info for specific user
+            const coAdminInfo = {
+                enabled: true, // Everyone gets co-admins
+                limit: isPremium ? 'Unlimited' : '1 co-admin max',
+                unlimited: isPremium
+            };
+            
             return {
                 tier: tier,
                 isPremium: isPremium,
@@ -569,13 +698,15 @@ class SubscriptionService {
                     remove_ads: isPremium,
                     unlimited_broadcasts: isPremium,
                     advanced_analytics: isPremium,
+                    co_admins: coAdminInfo,
                     basic_broadcasts: true, // Everyone gets basic broadcasts
                     referral_program: true,
                     channel_management: true
                 },
                 limits: {
                     weekly_broadcasts: isPremium ? 'Unlimited' : '3 per week',
-                    max_bots: isPremium ? 'Unlimited' : '5 bots',
+                    max_bots: isPremium ? '50 bots' : '5 bots',
+                    max_co_admins: isPremium ? 'Unlimited' : '1 co-admin',
                     storage: isPremium ? 'Unlimited' : '100MB'
                 }
             };
@@ -590,6 +721,11 @@ class SubscriptionService {
                     remove_ads: false,
                     unlimited_broadcasts: false,
                     advanced_analytics: false,
+                    co_admins: {
+                        enabled: true,
+                        limit: '1 co-admin max',
+                        unlimited: false
+                    },
                     basic_broadcasts: true,
                     referral_program: true,
                     channel_management: true
@@ -597,6 +733,7 @@ class SubscriptionService {
                 limits: {
                     weekly_broadcasts: '3 per week',
                     max_bots: '5 bots',
+                    max_co_admins: '1 co-admin',
                     storage: '100MB'
                 }
             };
@@ -719,16 +856,6 @@ class SubscriptionService {
         try {
             // This is a placeholder for future payment gateway integration
             console.log('Webhook received:', webhookData);
-            
-            // Example structure for future implementation:
-            // {
-            //   event: 'payment.succeeded',
-            //   userId: '123456789',
-            //   amount: 3.00,
-            //   currency: 'BOM',
-            //   transactionId: 'txn_123456',
-            //   timestamp: '2025-12-07T10:00:00Z'
-            // }
             
             return {
                 processed: true,

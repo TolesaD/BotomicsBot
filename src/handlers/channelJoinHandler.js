@@ -386,7 +386,6 @@ static async startAddChannel(ctx, botId) {
       }
 
       keyboardButtons.push(
-        [Markup.button.callback('📊 Test Channel Check', `channel_test_${botId}`)],
         [Markup.button.callback('🔙 Back to Settings', `mini_settings`)]
       );
 
@@ -550,46 +549,6 @@ static async startAddChannel(ctx, botId) {
   }
 }
 
-  // Handle test channel check
-  static async handleTestChannelCheck(ctx, botId) {
-    try {
-      await ctx.answerCbQuery('🔍 Testing channel check...');
-      
-      const userId = ctx.from.id;
-      const membershipCheck = await this.checkChannelMembership(ctx, botId, userId);
-      
-      if (membershipCheck.required) {
-        if (membershipCheck.joined) {
-          await ctx.reply(
-            `✅ *Channel Check Successful!*\n\n` +
-            `You have joined all ${membershipCheck.totalChannels} required channels.\n\n` +
-            `Users will be able to access the bot without any issues.`,
-            { parse_mode: 'Markdown' }
-          );
-        } else {
-          await ctx.reply(
-            `❌ *Channel Check Failed*\n\n` +
-            `You haven't joined all required channels.\n\n` +
-            `Missing ${membershipCheck.notJoinedChannels.length} channels:\n` +
-            membershipCheck.notJoinedChannels.map(ch => `• ${ch.channel_title} (@${ch.channel_username})`).join('\n'),
-            { parse_mode: 'Markdown' }
-          );
-        }
-      } else {
-        await ctx.reply(
-          `ℹ️ *No Channel Requirements*\n\n` +
-          `There are no channel join requirements configured for this bot.\n\n` +
-          `Users can access the bot without joining any channels.`,
-          { parse_mode: 'Markdown' }
-        );
-      }
-      
-    } catch (error) {
-      console.error('Test channel check error:', error);
-      await ctx.answerCbQuery('❌ Test failed');
-    }
-  }
-
   // Handle text input for channel sessions
   static async handleChannelTextInput(ctx, text) {
     try {
@@ -708,7 +667,7 @@ static async startAddChannel(ctx, botId) {
         `• Advanced bot features\n` +
         `• Priority support\n\n` +
         `*Monthly Price:* 3 BOM\n\n` +
-        `Contact @admin to upgrade your account.`,
+        `Contact @BotomicsSupportBot to upgrade your account.`,
         { parse_mode: 'Markdown' }
       );
     });

@@ -56,23 +56,17 @@ const AdCampaign = require('./AdCampaign');
 const AdEvent = require('./AdEvent');
 const PlatformSettings = require('./PlatformSettings');
 
-// Define associations for core models
+// ==================== FIXED: REMOVE DUPLICATE ASSOCIATIONS ====================
+// Only define associations that are NOT already defined in model files
 
-// Bot belongs to User (owner)
+// Bot belongs to User (owner) - Keep this if not in Bot.js
 Bot.belongsTo(User, { 
   foreignKey: 'owner_id', 
   targetKey: 'telegram_id', 
   as: 'Owner' 
 });
 
-// User has many Bots (as owner)
-User.hasMany(Bot, { 
-  foreignKey: 'owner_id', 
-  sourceKey: 'telegram_id', 
-  as: 'OwnedBots' 
-});
-
-// Admin associations
+// Admin associations - Keep these
 Admin.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'AdminBot'
@@ -89,13 +83,7 @@ Bot.hasMany(Admin, {
   as: 'Admins' 
 });
 
-User.hasMany(Admin, { 
-  foreignKey: 'admin_user_id', 
-  sourceKey: 'telegram_id', 
-  as: 'AdminRoles' 
-});
-
-// Feedback associations
+// Feedback associations - Keep these
 Feedback.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'FeedbackBot'
@@ -112,7 +100,7 @@ Feedback.belongsTo(User, {
   as: 'FeedbackReplier'
 });
 
-// UserLog associations
+// UserLog associations - Keep these
 UserLog.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'UserLogBot'
@@ -123,7 +111,7 @@ Bot.hasMany(UserLog, {
   as: 'UserLogs' 
 });
 
-// BroadcastHistory associations
+// BroadcastHistory associations - Keep these
 BroadcastHistory.belongsTo(Bot, { 
   foreignKey: 'bot_id', 
   as: 'BroadcastBot'
@@ -140,7 +128,7 @@ BroadcastHistory.belongsTo(User, {
   as: 'BroadcastSender'
 });
 
-// Botomics associations
+// Botomics associations - Keep these
 Wallet.belongsTo(User, {
   foreignKey: 'user_id',
   targetKey: 'telegram_id',
@@ -218,18 +206,21 @@ if (Referral) {
     foreignKey: 'bot_id', 
     as: 'Referrals' 
   });
-
+  
+  // REMOVED: These are already defined in Referral.js
+  /*
   Referral.belongsTo(User, {
     foreignKey: 'referrer_id',
     targetKey: 'telegram_id',
-    as: 'ReferralReferrer'
+    as: 'ReferrerUser'
   });
 
   Referral.belongsTo(User, {
     foreignKey: 'referred_id',
     targetKey: 'telegram_id',
-    as: 'ReferralReferred'
+    as: 'ReferredUser'
   });
+  */
 }
 
 if (Withdrawal) {

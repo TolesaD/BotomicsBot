@@ -117,4 +117,103 @@ const User = sequelize.define('User', {
   ]
 });
 
+// Define associations method
+User.associate = function(models) {
+  // User has many Bots (as owner)
+  User.hasMany(models.Bot, {
+    foreignKey: 'owner_id',
+    sourceKey: 'telegram_id',
+    as: 'OwnedBots'
+  });
+  
+  // User has many Admin roles
+  User.hasMany(models.Admin, {
+    foreignKey: 'admin_user_id',
+    sourceKey: 'telegram_id',
+    as: 'AdminRoles'
+  });
+  
+  // User has many Feedbacks (as replier)
+  User.hasMany(models.Feedback, {
+    foreignKey: 'replied_by',
+    sourceKey: 'telegram_id',
+    as: 'RepliedFeedbacks'
+  });
+  
+  // User has many BroadcastHistories (as sender)
+  User.hasMany(models.BroadcastHistory, {
+    foreignKey: 'sent_by',
+    sourceKey: 'telegram_id',
+    as: 'SentBroadcasts'
+  });
+  
+  // User has many Referrals (as referrer)
+  User.hasMany(models.Referral, {
+    foreignKey: 'referrer_id',
+    sourceKey: 'telegram_id',
+    as: 'ReferralsMade'
+  });
+  
+  // User has many Referrals (as referred user)
+  User.hasMany(models.Referral, {
+    foreignKey: 'referred_id',
+    sourceKey: 'telegram_id',
+    as: 'ReferralsReceived'
+  });
+  
+  // User has many Withdrawals (as user)
+  User.hasMany(models.Withdrawal, {
+    foreignKey: 'user_id',
+    sourceKey: 'telegram_id',
+    as: 'Withdrawals'
+  });
+  
+  // User has many Withdrawals (as processor)
+  User.hasMany(models.Withdrawal, {
+    foreignKey: 'processed_by',
+    sourceKey: 'telegram_id',
+    as: 'ProcessedWithdrawals'
+  });
+  
+  // User has many UserBans (as banned user)
+  User.hasMany(models.UserBan, {
+    foreignKey: 'user_id',
+    sourceKey: 'telegram_id',
+    as: 'BansReceived'
+  });
+  
+  // User has many UserBans (as ban initiator)
+  User.hasMany(models.UserBan, {
+    foreignKey: 'banned_by',
+    sourceKey: 'telegram_id',
+    as: 'BansInitiated'
+  });
+  
+  // User has many UserBans (as unban initiator)
+  User.hasMany(models.UserBan, {
+    foreignKey: 'unbanned_by',
+    sourceKey: 'telegram_id',
+    as: 'UnbansInitiated'
+  });
+  
+  // Botomics associations
+  User.hasOne(models.Wallet, {
+    foreignKey: 'user_id',
+    sourceKey: 'telegram_id',
+    as: 'Wallet'
+  });
+  
+  User.hasMany(models.WalletTransaction, {
+    foreignKey: 'user_id',
+    sourceKey: 'telegram_id',
+    as: 'WalletTransactions'
+  });
+  
+  User.hasOne(models.UserSubscription, {
+    foreignKey: 'user_id',
+    sourceKey: 'telegram_id',
+    as: 'Subscription'
+  });
+};
+
 module.exports = User;

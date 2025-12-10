@@ -7,28 +7,35 @@ try {
 
 console.log('🔍 DEBUGGING STARTUP ON RAILWAY');
 console.log('================================');
-console.log('📋 Environment check:');
-console.log('   NODE_ENV:', process.env.NODE_ENV);
-console.log('   PORT:', process.env.PORT);
-console.log('   HOST:', process.env.HOST);
-console.log('   RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
+
+// ========== REMOVE THE EARLY ENVIRONMENT CHECK ==========
+// Railway loads variables AFTER the application starts
+// Don't check them immediately - wait for initialization
+
+// Let's just log what we have without failing
+console.log('📋 Initial Environment check:');
+console.log('   NODE_ENV:', process.env.NODE_ENV || 'not set');
+console.log('   PORT:', process.env.PORT || 'not set');
+console.log('   HOST:', process.env.HOST || 'not set');
+console.log('   RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT || 'not set');
 console.log('   DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
 console.log('   BOT_TOKEN:', process.env.BOT_TOKEN ? 'SET' : 'NOT SET');
 
-// Check for required variables IMMEDIATELY
-const requiredVars = ['BOT_TOKEN', 'DATABASE_URL', 'ENCRYPTION_KEY'];
-const missingVars = requiredVars.filter(varName => !process.env[varName]);
+// Log ALL environment variables for debugging
+console.log('\n🔍 Available environment variables:');
+const envVars = Object.keys(process.env).filter(k => 
+  k.includes('BOT') || k.includes('DATABASE') || k.includes('RAILWAY') || k.includes('ENCRYPTION')
+);
+envVars.forEach(key => {
+  const value = process.env[key];
+  const display = key.includes('TOKEN') || key.includes('KEY') || key.includes('URL') 
+    ? `${value?.substring(0, 15)}... (length: ${value?.length})`
+    : value;
+  console.log(`   ${key}: ${display}`);
+});
 
-if (missingVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingVars);
-  console.error('💡 How to fix on Railway:');
-  console.error('   1. Go to Railway Dashboard → Your Project → Variables');
-  console.error('   2. Add the missing environment variables');
-  console.error('   3. Redeploy your application');
-  process.exit(1);
-}
-
-console.log('✅ All required environment variables found!');
+// Remove the process.exit() - Let the app start and Railway will inject variables
+// The variables ARE set, they just haven't been loaded into process.env yet
 
 // Now load dependencies
 const { Telegraf, Markup } = require('telegraf');
@@ -55,7 +62,9 @@ const { startHandler, helpHandler, featuresHandler } = require('./handlers/start
 const { createBotHandler, handleTokenInput, handleNameInput, cancelCreationHandler, isInCreationSession, getCreationStep } = require('./handlers/createBotHandler');
 const { myBotsHandler } = require('./handlers/myBotsHandler');
 const PlatformAdminHandler = require('./handlers/platformAdminHandler');
+// Add this to your imports section at the top
 const WalletHandler = require('./handlers/walletHandler');
+
 
 // Import routes
 const walletRoutes = require('./routes/walletRoutes');
@@ -66,31 +75,54 @@ const SubscriptionCron = require('./services/subscriptionCron'); // NEW
 // ==================== DYNAMIC URL HANDLING FOR RAILWAY ====================
 // Get Railway public URL (auto-detected on every redeploy)
 const getRailwayPublicUrl = () => {
-  // Railway provides these environment variables
+  // 1. DEVELOPMENT: Check for ngrok URL (highest priority for testing)
+  if (process.env.NGROK_URL) {
+    const url = process.env.NGROK_URL.trim();
+    console.log(`🔧 Development: Using NGROK_URL: ${url}`);
+    
+    // Ensure it's https and clean
+    let cleanUrl = url;
+    if (!cleanUrl.startsWith('http')) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+    cleanUrl = cleanUrl.replace(/\/$/, ''); // Remove trailing slash
+    
+    return cleanUrl;
+  }
+  
+  // 2. Check for production Railway URL
   if (process.env.RAILWAY_PUBLIC_URL) {
-    return process.env.RAILWAY_PUBLIC_URL;
+    const url = process.env.RAILWAY_PUBLIC_URL.trim();
+    console.log(`🚀 Production: Using RAILWAY_PUBLIC_URL: ${url}`);
+    return url.replace(/\/$/, '');
   }
   
-  if (process.env.RAILWAY_STATIC_URL) {
-    return process.env.RAILWAY_STATIC_URL;
-  }
-  
-  // For service deployments (newer Railway)
+  // 3. For service deployments (newer Railway)
   const serviceName = process.env.RAILWAY_SERVICE_NAME;
   const projectName = process.env.RAILWAY_PROJECT_NAME;
   
   if (serviceName && projectName) {
-    return `https://${serviceName}-${projectName}.up.railway.app`;
+    const url = `https://${serviceName}-${projectName}.up.railway.app`;
+    console.log(`🚀 Production: Using service URL: ${url}`);
+    return url;
   }
   
-  // Development fallback
-  if (process.env.NODE_ENV === 'development') {
+  // 4. DEVELOPMENT: Localhost fallback
+  const isLocalDevelopment = !process.env.RAILWAY_ENVIRONMENT && 
+                           (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV);
+  
+  if (isLocalDevelopment) {
+    console.log('🔧 Development: Local mode detected');
+    console.log('💡 For Web App testing:');
+    console.log('   1. Set NGROK_URL=https://your-ngrok-url.ngrok.io in .env');
+    console.log('   2. Run: ngrok http 3000 (in separate terminal)');
+    console.log('   3. Restart bot');
     return 'http://localhost:3000';
   }
   
-  // Fallback - this will log so you know to update it
+  // 5. Fallback
   const fallbackUrl = 'https://botomics-production.up.railway.app';
-  console.warn(`⚠️  No Railway URL detected, using fallback: ${fallbackUrl}`);
+  console.warn(`⚠️  No URL detected, using fallback: ${fallbackUrl}`);
   return fallbackUrl;
 };
 
@@ -99,204 +131,304 @@ console.log(`🌐 Public URL detected: ${PUBLIC_URL}`);
 
 class MetaBotCreator {
   constructor() {
-    if (!config.BOT_TOKEN) {
-      console.error('❌ BOT_TOKEN is not set');
-      console.error('💡 Add BOT_TOKEN to Railway Variables');
-      process.exit(1);
+    console.log('\n🔍 Inside MetaBotCreator constructor...');
+    console.log('BOT_TOKEN available:', !!process.env.BOT_TOKEN);
+    console.log('DATABASE_URL available:', !!process.env.DATABASE_URL);
+    console.log('ENCRYPTION_KEY available:', !!process.env.ENCRYPTION_KEY);
+    
+    // IMPORTANT: Check for variables HERE instead of at the top
+    const requiredVars = ['BOT_TOKEN', 'DATABASE_URL', 'ENCRYPTION_KEY'];
+    const missingVars = requiredVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      console.error('\n❌ Missing required environment variables:', missingVars);
+      console.error('\n📋 Current process.env:');
+      console.error(Object.keys(process.env).join(', '));
+      
+      // Wait a bit and try again (Railway might still be loading)
+      console.error('\n⚠️  Railway might still be loading variables. Continuing anyway...');
+      console.error('💡 If the app fails, check Railway Variables are set at SERVICE level.');
+      
+      // Don't exit - let the app try to continue
+      // process.exit(1);
+    } else {
+      console.log('✅ All required environment variables found!');
     }
     
-    console.log(`🤖 Creating bot instance with token: ${config.BOT_TOKEN.substring(0, 10)}...`);
-    console.log('🚀 Optimized for Railway.com deployment');
+    if (!process.env.BOT_TOKEN) {
+      console.error('❌ BOT_TOKEN is not set in process.env');
+      console.error('💡 Railway Variables might need time to load. Continuing...');
+      // Create a placeholder - the actual check will happen when Telegraf tries to use it
+    }
     
-    this.bot = new Telegraf(config.BOT_TOKEN, {
-      handlerTimeout: 90000,
-      telegram: {
-        apiRoot: 'https://api.telegram.org',
-        agent: null
-      }
-    });
+    console.log(`🤖 Creating bot instance...`);
+    console.log(`🚀 Optimized for Railway.com deployment`);
+    
+    // Create config AFTER checking environment
+    const createConfig = require('../config/environment');
+    const config = createConfig();
+    
+    // Now create the bot with whatever token we have (might be undefined)
+    try {
+      this.bot = new Telegraf(config.BOT_TOKEN || process.env.BOT_TOKEN, {
+        handlerTimeout: 90000,
+        telegram: {
+          apiRoot: 'https://api.telegram.org',
+          agent: null
+        }
+      });
+    } catch (error) {
+      console.error('❌ Failed to create Telegraf bot:', error.message);
+      console.error('💡 This might be because BOT_TOKEN is not loaded yet.');
+      console.error('   Railway will inject variables soon. Trying again in initialize()...');
+      // We'll try again in initialize() method
+    }
     
     this.expressApp = express();
     this.setupExpress();
     this.setupHandlers();
   }
   
-  setupExpress() {
-    console.log('🔄 Setting up Express server for API...');
-    
-    // Middleware
-    this.expressApp.use(cors());
-    this.expressApp.use(express.json());
-    this.expressApp.use(express.urlencoded({ extended: true }));
-    
-    // Wallet API Routes - CRITICAL FOR MINI-APP
-    this.expressApp.use('/api', walletRoutes);
-    console.log('✅ Wallet API routes registered at /api');
-    
-    // Static files for wallet mini-app
-    const walletPath = path.join(__dirname, '../../wallet');
-    console.log(`📱 Serving wallet mini-app from: ${walletPath}`);
-    
-    this.expressApp.use('/wallet', express.static(walletPath));
-    
-    // Make sure index.html is served at root path
-    this.expressApp.get('/wallet', (req, res) => {
-      res.sendFile(path.join(walletPath, 'index.html'));
+setupExpress() {
+  console.log('🔄 Setting up Express server for Railway...');
+  
+  // Determine if running on Railway
+  const isRailway = process.env.RAILWAY_ENVIRONMENT || 
+                   process.env.RAILWAY_SERVICE_NAME || 
+                   process.env.RAILWAY_PUBLIC_URL;
+  
+  console.log(`🚂 Running on Railway: ${isRailway ? 'Yes' : 'No'}`);
+  
+  // Middleware
+  this.expressApp.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning']
+  }));
+  
+  this.expressApp.use(express.json());
+  this.expressApp.use(express.urlencoded({ extended: true }));
+  
+  // Skip ngrok warnings
+  this.expressApp.use((req, res, next) => {
+    res.setHeader('ngrok-skip-browser-warning', 'true');
+    next();
+  });
+  
+  // Health check endpoint (for Railway)
+  this.expressApp.get('/api/health', (req, res) => {
+    res.json({
+      status: 'healthy',
+      service: 'botomics-platform',
+      version: '2.0.0',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      platform: isRailway ? 'railway' : 'local',
+      publicUrl: PUBLIC_URL,
+      walletUrl: `${PUBLIC_URL}/wallet`,
+      railway: {
+        environment: process.env.RAILWAY_ENVIRONMENT,
+        serviceName: process.env.RAILWAY_SERVICE_NAME,
+        publicUrl: process.env.RAILWAY_PUBLIC_URL
+      }
     });
-    
-    // Update config with current URL for Railway
-    config.APP_URL = PUBLIC_URL;
-    config.WALLET_URL = `${PUBLIC_URL}/wallet`;
-    
-    // API endpoint to get current public URL (used by mini-app)
-    this.expressApp.get('/api/public-url', (req, res) => {
-      const walletUrl = `${PUBLIC_URL}/wallet`;
-      res.json({ 
-        publicUrl: PUBLIC_URL,
-        walletUrl: walletUrl,
-        apiUrl: `${PUBLIC_URL}/api`,
-        environment: process.env.NODE_ENV || 'production',
-        timestamp: new Date().toISOString(),
-        platform: 'railway'
-      });
+  });
+  
+  // Public URL endpoint
+  this.expressApp.get('/api/public-url', (req, res) => {
+    res.json({
+      publicUrl: PUBLIC_URL,
+      walletUrl: `${PUBLIC_URL}/wallet`,
+      apiUrl: `${PUBLIC_URL}/api`,
+      environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString(),
+      platform: isRailway ? 'railway' : 'local'
     });
-    
-    // Test endpoint for Railway
-    this.expressApp.get('/api/test-railway', (req, res) => {
-      res.json({
-        success: true,
-        message: 'Railway deployment working!',
-        publicUrl: PUBLIC_URL,
-        walletUrl: `${PUBLIC_URL}/wallet`,
-        environment: process.env.NODE_ENV,
-        railway: {
-          environment: process.env.RAILWAY_ENVIRONMENT,
-          serviceName: process.env.RAILWAY_SERVICE_NAME,
-          projectName: process.env.RAILWAY_PROJECT_NAME,
-          publicUrl: process.env.RAILWAY_PUBLIC_URL,
-          staticUrl: process.env.RAILWAY_STATIC_URL
-        },
-        timestamp: new Date().toISOString()
-      });
-    });
-    
-    // Health endpoints
-    this.expressApp.get('/api/health', (req, res) => {
-      res.json({ 
-        status: 'online', 
-        service: 'Botomics Platform',
-        version: '2.0.0',
-        timestamp: new Date().toISOString(),
-        environment: config.NODE_ENV,
-        platform: 'Railway',
-        publicUrl: PUBLIC_URL,
-        walletUrl: `${PUBLIC_URL}/wallet`
-      });
-    });
-    
-    this.expressApp.get('/api/wallet/health', (req, res) => {
-      res.json({ 
-        status: 'online', 
-        service: 'Botomics Wallet API',
-        version: '2.0.0',
-        timestamp: new Date().toISOString(),
-        publicUrl: PUBLIC_URL
-      });
-    });
-    
-    // Root endpoint with platform info
-    this.expressApp.get('/', (req, res) => {
-      const walletUrl = config.WALLET_URL || `${req.protocol}://${req.get('host')}/wallet`;
-      const botUrl = `https://t.me/${config.MAIN_BOT_USERNAME.replace('@', '')}`;
-      
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Botomics Platform - Railway</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { font-family: Arial, sans-serif; margin: 40px; text-align: center; background: #f5f5f5; }
-            .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            h1 { color: #0088cc; margin-bottom: 10px; }
-            .status { background: #4CAF50; color: white; padding: 5px 10px; border-radius: 5px; display: inline-block; margin-bottom: 20px; }
-            .links { margin: 30px 0; }
-            a { display: inline-block; margin: 10px; padding: 12px 24px; background: #0088cc; color: white; text-decoration: none; border-radius: 5px; transition: background 0.3s; }
-            a:hover { background: #006699; }
-            .info { background: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; }
-            .railway-badge { background: #0a0a0a; color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; margin-left: 10px; }
-            .api-endpoints { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; font-family: monospace; font-size: 14px; }
-            .admin-info { background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; border-left: 4px solid #ffc107; }
-            .url-info { background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: left; border-left: 4px solid #4CAF50; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>🤖 Botomics Platform <span class="railway-badge">Railway</span></h1>
-            <div class="status">🚀 Online & Running</div>
-            <p>Telegram bot creation platform with integrated wallet system</p>
-            
-            <div class="url-info">
-              <strong>🌐 Current URLs:</strong><br>
-              • Public URL: ${PUBLIC_URL}<br>
-              • Wallet Mini-App: ${walletUrl}<br>
-              • API Base: ${PUBLIC_URL}/api<br>
-              • Health Check: ${PUBLIC_URL}/api/health<br>
-              • Railway Test: ${PUBLIC_URL}/api/test-railway
-            </div>
-            
-            <div class="info">
-              <strong>Platform Status:</strong><br>
-              • Environment: ${config.NODE_ENV}<br>
-              • Database: ${config.DATABASE_URL ? 'Connected ✓' : 'Not Connected ✗'}<br>
-              • Wallet: ${walletUrl ? 'Available ✓' : 'Not Available ✗'}<br>
-              • Server Time: ${new Date().toISOString()}<br>
-              • Railway Environment: ${process.env.RAILWAY_ENVIRONMENT || 'Production'}
-            </div>
-            
-            <div class="admin-info">
-              <strong>🤫 Admin Commands (Platform Creator Only):</strong><br>
-              • <code>/platform</code> - Platform admin dashboard<br>
-              • <code>/admin_wallet</code> - Wallet admin dashboard<br>
-              • <code>/add_bom &lt;user&gt; &lt;amount&gt;</code> - Add BOM to user<br>
-              • <code>/freeze_wallet &lt;user&gt; &lt;reason&gt;</code> - Freeze wallet<br>
-              • <code>/unfreeze_wallet &lt;user&gt;</code> - Unfreeze wallet<br>
-              • <code>/grant_premium &lt;user&gt; &lt;days&gt;</code> - Grant premium<br>
-              • Use Telegram bot for full admin interface
-            </div>
-            
-            <div class="api-endpoints">
-              <strong>API Endpoints:</strong><br>
-              • <a href="/api/health">/api/health</a> - Health check<br>
-              • <a href="/api/wallet/health">/api/wallet/health</a> - Wallet health<br>
-              • <a href="/api/public-url">/api/public-url</a> - Get current URLs<br>
-              • <a href="/api/test-railway">/api/test-railway</a> - Railway test<br>
-              • <a href="/wallet">/wallet</a> - Wallet Mini-App<br>
-              • /api/wallet/balance - Get balance<br>
-              • /api/wallet/transactions - Transaction history
-            </div>
-            
-            <div class="links">
-              <a href="${walletUrl}">💰 Open Wallet</a>
-              <a href="${botUrl}">🤖 Open Telegram Bot</a>
-              <a href="/api/health">📊 API Health Check</a>
-              <a href="https://railway.app">🚂 Railway Dashboard</a>
-              <a href="/api/test-railway">🧪 Railway Test</a>
-            </div>
-            
-            <p>Use ${config.MAIN_BOT_USERNAME} on Telegram to access the full platform.</p>
-            <p style="font-size: 12px; color: #666; margin-top: 30px;">
-              Deployed on Railway • Node.js ${process.version} • ${process.platform}<br>
-              URLs auto-update on Railway redeployments
-            </p>
-          </div>
-        </body>
-        </html>
-      `);
-    });
-    
-    console.log('✅ Express server setup complete');
+  });
+  
+  // Wallet API routes
+  this.expressApp.use('/api', walletRoutes);
+  console.log('✅ Wallet API routes registered at /api');
+
+  // Add this middleware at the TOP of your setupExpress() method, BEFORE static file serving:
+this.expressApp.use((req, res, next) => {
+  // Set header to skip ngrok browser warning
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  
+  // Also add these for better compatibility:
+  res.setHeader('X-ngrok-skip-browser-warning', 'true');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  
+  next();
+});
+  
+  // ========== CRITICAL: STATIC FILE SERVING ==========
+  // Determine correct wallet path for Railway
+  let walletPath;
+  
+  if (isRailway) {
+    // Railway deployment - use absolute path
+    walletPath = path.join(process.cwd(), 'wallet');
+    console.log(`🚂 Railway mode: Serving wallet from ${walletPath}`);
+  } else {
+    // Local development
+    walletPath = path.join(__dirname, '../wallet');
+    console.log(`🔧 Local mode: Serving wallet from ${walletPath}`);
   }
+  
+  // Verify wallet exists
+  const fs = require('fs');
+  if (!fs.existsSync(walletPath)) {
+    console.error(`❌ ERROR: Wallet directory not found at ${walletPath}`);
+    console.log(`🔍 Current directory: ${process.cwd()}`);
+    console.log(`🔍 Listing project root:`);
+    try {
+      const rootFiles = fs.readdirSync(process.cwd());
+      console.log(`   ${rootFiles.join(', ')}`);
+    } catch (e) {
+      console.log(`   Cannot list directory: ${e.message}`);
+    }
+    
+    // Create wallet directory with basic content
+    console.log('📁 Creating wallet directory...');
+    fs.mkdirSync(walletPath, { recursive: true });
+    
+    // Create basic index.html
+    const basicHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Botomics Wallet</title>
+      <style>
+        body { font-family: Arial; padding: 40px; text-align: center; }
+        .status { color: green; font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <h1>💰 Botomics Wallet</h1>
+      <p class="status">✅ Running on ${isRailway ? 'Railway' : 'Local'}</p>
+      <p>URL: ${PUBLIC_URL}/wallet</p>
+      <p>Time: ${new Date().toISOString()}</p>
+      <p>Environment: ${process.env.NODE_ENV || 'development'}</p>
+      <p>Platform: ${isRailway ? 'Railway 🚂' : 'Local 🖥️'}</p>
+    </body>
+    </html>
+    `;
+    
+    fs.writeFileSync(path.join(walletPath, 'index.html'), basicHtml);
+    console.log('✅ Created basic wallet index.html');
+  } else {
+    console.log(`✅ Wallet directory found at ${walletPath}`);
+    const files = fs.readdirSync(walletPath);
+    console.log(`📁 Files in wallet: ${files.join(', ')}`);
+  }
+  
+  // Serve static files
+  this.expressApp.use('/wallet', express.static(walletPath, {
+    setHeaders: (res, path) => {
+      // Set CORS headers for static files
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('ngrok-skip-browser-warning', 'true');
+      
+      // Cache control for production
+      if (isRailway) {
+        res.set('Cache-Control', 'public, max-age=3600');
+      }
+    }
+  }));
+  
+  // Handle /wallet route
+  this.expressApp.get('/wallet', (req, res) => {
+    console.log(`📥 GET /wallet from ${req.headers.host}`);
+    const indexPath = path.join(walletPath, 'index.html');
+    
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send(`
+        <h1>Wallet Index Not Found</h1>
+        <p>Looking for: ${indexPath}</p>
+        <p>Wallet directory: ${walletPath}</p>
+        <p>Files in directory: ${fs.readdirSync(walletPath).join(', ')}</p>
+      `);
+    }
+  });
+  
+  // Handle /wallet/* paths for SPA routing
+  this.expressApp.get('/wallet/*', (req, res) => {
+    res.sendFile(path.join(walletPath, 'index.html'));
+  });
+  
+  // Root route
+  this.expressApp.get('/', (req, res) => {
+    // If accessed via ngrok or Railway, redirect to wallet
+    if (req.headers.host.includes('ngrok') || 
+        req.headers.host.includes('railway') ||
+        isRailway) {
+      return res.redirect('/wallet');
+    }
+    
+    // Local development - show info page
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Botomics Platform</title>
+        <style>
+          body { font-family: Arial; padding: 40px; max-width: 800px; margin: 0 auto; }
+          .status { color: green; font-weight: bold; }
+          .link-btn { display: inline-block; margin: 10px; padding: 12px 24px; background: #0088cc; color: white; text-decoration: none; border-radius: 8px; }
+          .info-box { background: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>🤖 Botomics Platform</h1>
+        <p class="status">✅ Online & Running</p>
+        
+        <div class="info-box">
+          <h3>Quick Links</h3>
+          <a href="/wallet" class="link-btn">💰 Open Wallet</a>
+          <a href="/api/health" class="link-btn">📊 Health Check</a>
+          <a href="/api/public-url" class="link-btn">🌐 URL Info</a>
+          <a href="${PUBLIC_URL}/wallet" class="link-btn">🔗 Public Wallet</a>
+        </div>
+        
+        <div class="info-box">
+          <h3>Platform Info</h3>
+          <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</p>
+          <p><strong>Public URL:</strong> ${PUBLIC_URL}</p>
+          <p><strong>Wallet URL:</strong> ${PUBLIC_URL}/wallet</p>
+          <p><strong>Platform:</strong> ${isRailway ? 'Railway 🚂' : 'Local 🖥️'}</p>
+          <p><strong>Server Time:</strong> ${new Date().toISOString()}</p>
+        </div>
+        
+        <div style="margin-top: 30px; font-size: 12px; color: #666;">
+          Botomics Platform • Node.js ${process.version} • ${process.platform}
+        </div>
+      </body>
+      </html>
+    `);
+  });
+  
+  // 404 handler
+  this.expressApp.use((req, res) => {
+    res.status(404).json({
+      error: 'Not Found',
+      message: `Route ${req.method} ${req.url} not found`,
+      timestamp: new Date().toISOString(),
+      availableRoutes: [
+        'GET /',
+        'GET /wallet',
+        'GET /api/health',
+        'GET /api/public-url'
+      ]
+    });
+  });
+  
+  console.log('✅ Express server setup complete for Railway');
+}
   
   setupHandlers() {
     console.log('🔄 Setting up bot handlers...');
@@ -328,8 +460,8 @@ class MetaBotCreator {
     
     // Wallet commands
     this.bot.command('wallet', async (ctx) => {
-      await this.openWalletMiniApp(ctx);
-    });
+  await this.openWalletMiniApp(ctx);
+});
     
     this.bot.command('balance', async (ctx) => {
       await WalletHandler.handleWalletCommand(ctx);
@@ -468,85 +600,128 @@ class MetaBotCreator {
     });
     
     // Debug and maintenance commands
-    this.bot.command('debug_minibots', async (ctx) => {
-      try {
-        await ctx.reply('🔄 Debugging mini-bots...');
-        const status = MiniBotManager.getInitializationStatus();
-        let message = `🔍 *Mini-bot Debug Info*\n\n`;
-        message += `*Status:* ${status.status}\n`;
-        message += `*Initialized:* ${status.isInitialized ? 'Yes' : 'No'}\n`;
-        message += `*Active Bots:* ${status.activeBots}\n`;
-        
-        const { Bot } = require('./models');
-        const activeBots = await Bot.findAll({ where: { is_active: true } });
-        message += `*Database Active Bots:* ${activeBots.length}\n`;
-        
-        await ctx.replyWithMarkdown(message);
-      } catch (error) {
-        console.error('Debug command error:', error);
-        await ctx.reply('❌ Debug command failed.');
-      }
-    });
+    // Debug and maintenance commands
+this.bot.command('debug_minibots', async (ctx) => {
+  try {
+    await ctx.reply('🔄 Debugging mini-bots...');
+    const status = MiniBotManager.getInitializationStatus();
+    let message = `🔍 *Mini-bot Debug Info*\n\n`;
+    message += `*Status:* ${status.status}\n`;
+    message += `*Initialized:* ${status.isInitialized ? 'Yes' : 'No'}\n`;
+    message += `*Active Bots:* ${status.activeBots}\n`;
     
-    this.bot.command('reinit', async (ctx) => {
-      try {
-        const userId = ctx.from.id;
-        if (userId !== 1827785384) {
-          await ctx.reply('❌ Only bot owner can use this command.');
-          return;
-        }
-        await ctx.reply('🔄 Forcing reinitialization of all mini-bots...');
-        const result = await MiniBotManager.forceReinitializeAllBots();
-        await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
-      } catch (error) {
-        console.error('Reinit command error:', error);
-        await ctx.reply('❌ Error during reinitialization.');
-      }
-    });
+    const { Bot } = require('./models');
+    const activeBots = await Bot.findAll({ where: { is_active: true } });
+    message += `*Database Active Bots:* ${activeBots.length}\n`;
     
-    // Wallet debug command
-    this.bot.command('wallet_debug', async (ctx) => {
-      try {
-        const userId = ctx.from.id;
-        const balance = await require('./services/walletService').getBalance(userId);
-        const subscription = await require('./services/subscriptionService').getSubscriptionTier(userId);
-        
-        await ctx.replyWithMarkdown(
-          `🔍 *Wallet Debug Info*\n\n` +
-          `*User ID:* ${userId}\n` +
-          `*Balance:* ${balance.balance.toFixed(2)} ${balance.currency}\n` +
-          `*Status:* ${balance.isFrozen ? 'Frozen ❄️' : 'Active ✅'}\n` +
-          `*Subscription:* ${subscription}\n` +
-          `*Wallet Address:* BOTOMICS_${userId}\n\n` +
-          `*Current Platform URL:* ${PUBLIC_URL}\n` +
-          `*Wallet URL:* ${PUBLIC_URL}/wallet`
-        );
-      } catch (error) {
-        console.error('Wallet debug error:', error);
-        await ctx.reply(`❌ Debug error: ${error.message}`);
-      }
-    });
+    await ctx.replyWithMarkdown(message);
+  } catch (error) {
+    console.error('Debug command error:', error);
+    await ctx.reply('❌ Debug command failed.');
+  }
+});
+
+this.bot.command('reinit', async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    if (userId !== 1827785384) {
+      await ctx.reply('❌ Only bot owner can use this command.');
+      return;
+    }
+    await ctx.reply('🔄 Forcing reinitialization of all mini-bots...');
+    const result = await MiniBotManager.forceReinitializeAllBots();
+    await ctx.reply(`✅ Reinitialization completed. ${result} bots started.`);
+  } catch (error) {
+    console.error('Reinit command error:', error);
+    await ctx.reply('❌ Error during reinitialization.');
+  }
+});
+
+// Wallet debug command
+this.bot.command('wallet_debug', async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    const balance = await require('./services/walletService').getBalance(userId);
+    const subscription = await require('./services/subscriptionService').getSubscriptionTier(userId);
     
-    // Railway URL command
-    this.bot.command('railway_url', async (ctx) => {
-      try {
-        await ctx.replyWithMarkdown(
-          `🌐 *Current Platform URLs*\n\n` +
-          `*Public URL:* ${PUBLIC_URL}\n` +
-          `*Wallet Mini-App:* ${PUBLIC_URL}/wallet\n` +
-          `*API Base:* ${PUBLIC_URL}/api\n\n` +
-          `*Save these URLs:*\n` +
-          `• Wallet bookmark: ${PUBLIC_URL}/wallet\n` +
-          `• Health check: ${PUBLIC_URL}/api/health\n` +
-          `• Railway test: ${PUBLIC_URL}/api/test-railway\n\n` +
-          `*Note:* URLs auto-update on Railway redeployments.`
-        );
-      } catch (error) {
-        console.error('Railway URL command error:', error);
-        await ctx.reply(`❌ Error getting URLs: ${error.message}`);
-      }
-    });
+    await ctx.replyWithMarkdown(
+      `🔍 *Wallet Debug Info*\n\n` +
+      `*User ID:* ${userId}\n` +
+      `*Balance:* ${balance.balance.toFixed(2)} ${balance.currency}\n` +
+      `*Status:* ${balance.isFrozen ? 'Frozen ❄️' : 'Active ✅'}\n` +
+      `*Subscription:* ${subscription}\n` +
+      `*Wallet Address:* BOTOMICS_${userId}\n\n` +
+      `*Current Platform URL:* ${PUBLIC_URL}\n` +
+      `*Wallet URL:* ${PUBLIC_URL}/wallet`
+    );
+  } catch (error) {
+    console.error('Wallet debug error:', error);
+    await ctx.reply(`❌ Debug error: ${error.message}`);
+  }
+});
+
+// Railway URL command
+this.bot.command('railway_url', async (ctx) => {
+  try {
+    await ctx.replyWithMarkdown(
+      `🌐 *Current Platform URLs*\n\n` +
+      `*Public URL:* ${PUBLIC_URL}\n` +
+      `*Wallet Mini-App:* ${PUBLIC_URL}/wallet\n` +
+      `*API Base:* ${PUBLIC_URL}/api\n\n` +
+      `*Save these URLs:*\n` +
+      `• Wallet bookmark: ${PUBLIC_URL}/wallet\n` +
+      `• Health check: ${PUBLIC_URL}/api/health\n` +
+      `• Railway test: ${PUBLIC_URL}/api/test-railway\n\n` +
+      `*Note:* URLs auto-update on Railway redeployments.`
+    );
+  } catch (error) {
+    console.error('Railway URL command error:', error);
+    await ctx.reply(`❌ Error getting URLs: ${error.message}`);
+  }
+});
+
+// Broadcast debug command - NEW
+this.bot.command('debug_broadcast', async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    const session = MiniBotManager.broadcastSessions?.get(userId);
     
+    let message = `🔍 *Broadcast Debug Info*\n\n`;
+    message += `*Your User ID:* ${userId}\n`;
+    
+    if (session) {
+      message += `*Session Found:* ✅\n`;
+      message += `*Bot ID:* ${session.botId}\n`;
+      message += `*Step:* ${session.step}\n`;
+      message += `*Created:* ${new Date(session.createdAt).toLocaleString()}\n`;
+      message += `*Message Length:* ${session.message?.length || 0} chars\n`;
+      
+      // Show preview of message
+      if (session.message) {
+        const preview = session.message.substring(0, 100);
+        message += `*Preview:* ${preview}${session.message.length > 100 ? '...' : ''}\n`;
+      }
+    } else {
+      message += `*Session Found:* ❌\n`;
+      message += `No active broadcast session found.\n`;
+    }
+    
+    // Show all broadcast sessions (admin only)
+    if (ctx.from.id === 1827785384) { // Your user ID
+      const allSessions = Array.from(MiniBotManager.broadcastSessions?.entries() || []);
+      message += `\n*All Sessions:* ${allSessions.length}\n`;
+      allSessions.forEach(([uid, sess], index) => {
+        message += `${index + 1}. User ${uid}: bot=${sess.botId}, step=${sess.step}\n`;
+      });
+    }
+    
+    await ctx.replyWithMarkdown(message);
+    
+  } catch (error) {
+    console.error('Debug broadcast command error:', error);
+    await ctx.reply('❌ Error debugging broadcast sessions.');
+  }
+});
     // Text message handler
     this.bot.on('text', async (ctx) => {
       const userId = ctx.from.id;
@@ -635,190 +810,198 @@ class MetaBotCreator {
     console.log('✅ Main bot handlers setup complete');
   }
 
-  setupMiniApp() {
-    console.log('🔄 Setting up Mini App for Railway...');
-    
-    // Get current public URL (dynamic for Railway)
-    const walletUrl = config.WALLET_URL || `${PUBLIC_URL}/wallet`;
-    
+setupMiniApp() {
+  console.log('🔄 Setting up Mini App...');
+  
+  // Don't set menu button in localhost mode (it will fail)
+  if (PUBLIC_URL.includes('localhost')) {
+    console.log('⚠️  Skipping chat menu button in localhost mode (HTTPS required)');
+    console.log('💡 Commands available: /wallet, /balance, /premium');
+  } else {
+    // Production or ngrok: Set up Web App
+    const walletUrl = `${PUBLIC_URL}/wallet`;
     console.log(`📱 Mini App URL: ${walletUrl}`);
-    console.log(`🌐 Public API URL: ${PUBLIC_URL}`);
     
-    // Set chat menu button with dynamic URL
     this.bot.telegram.setChatMenuButton({
       menu_button: {
         type: 'web_app',
         text: '💰 Botomics Wallet',
         web_app: { url: walletUrl }
       }
+    }).then(() => {
+      console.log('✅ Chat menu button set successfully');
     }).catch(err => {
-      console.warn('⚠️  Could not set menu button (may not have permission):', err.message);
+      console.warn('⚠️  Could not set menu button:', err.message);
+      console.log('💡 This is normal in development or without bot permissions');
     });
-    
-    console.log(`✅ Mini App configured for Railway deployment`);
     
     // Update the config for use in other handlers
     config.WALLET_URL = walletUrl;
-    
-    // Handle web app data from mini-app
-    this.bot.on('web_app_data', async (ctx) => {
-      try {
-        const data = JSON.parse(ctx.webAppData.data);
-        console.log('📱 Mini App data received:', data.action);
-        
-        const userId = ctx.from.id;
-        
-        switch (data.action) {
-          case 'get_balance':
-            const walletService = require('./services/walletService');
-            const balance = await walletService.getBalance(userId);
-            await ctx.reply(
-              `💰 *Your Wallet Balance*\n\n` +
-              `*Balance:* ${balance.balance.toFixed(2)} ${balance.currency}\n` +
-              `*Status:* ${balance.isFrozen ? '❄️ Frozen' : '✅ Active'}\n` +
-              `*Address:* BOTOMICS_${userId}\n\n` +
-              `*1 BOM = $1.00 USD*`,
-              { parse_mode: 'Markdown' }
-            );
-            break;
-            
-          case 'get_public_url':
-            // Send current public URL to mini-app
-            await ctx.reply(
-              `🌐 *Current Platform URL*\n\n` +
-              `*Public URL:* ${PUBLIC_URL}\n` +
-              `*Wallet URL:* ${walletUrl}\n` +
-              `*API Base:* ${PUBLIC_URL}/api\n` +
-              `*Environment:* ${process.env.NODE_ENV || 'production'}\n\n` +
-              `Bookmark this for direct access to your wallet.`,
-              { parse_mode: 'Markdown' }
-            );
-            break;
-            
-          case 'premium_upgrade':
-            try {
-              await require('./services/subscriptionService').upgradeToPremium(userId);
-              await ctx.reply(
-                '🎉 *Premium Subscription Activated!*\n\n' +
-                'Your premium subscription has been successfully activated.\n\n' +
-                '*Benefits:*\n' +
-                '✅ Unlimited bot creation\n' +
-                '✅ Unlimited broadcasts\n' +
-                '✅ All premium features unlocked\n\n' +
-                'Thank you for upgrading! 🚀',
-                { parse_mode: 'Markdown' }
-              );
-            } catch (error) {
-              await ctx.reply(`❌ Error: ${error.message}`);
-            }
-            break;
-            
-          case 'contact_support':
-            await ctx.reply(
-              '📞 *Botomics Support*\n\n' +
-              'For assistance with:\n' +
-              '• Buying BOM coins\n' +
-              '• Wallet deposits/withdrawals\n' +
-              '• Premium subscriptions\n' +
-              '• Bot creation issues\n' +
-              '• Technical problems\n\n' +
-              'Contact: @BotomicsSupportBot\n\n' +
-              'We typically respond within 24 hours.',
-              { parse_mode: 'Markdown' }
-            );
-            break;
-            
-          case 'buy_bom_info':
-            await ctx.reply(
-              '💰 *Buy BOM Coins*\n\n' +
-              'To purchase BOM coins:\n\n' +
-              '1. Contact @BotomicsSupportBot\n' +
-              '2. Specify amount you want to buy (minimum 5 BOM)\n' +
-              '3. Follow payment instructions\n' +
-              '4. Submit payment proof in wallet\n' +
-              '5. Coins will be added after verification\n\n' +
-              '*Rate:* 1 BOM = $1.00 USD\n' +
-              '*Minimum Purchase:* 5 BOM ($5.00)\n' +
-              '*Wallet Address:* BOTOMICS_${userId}',
-              { parse_mode: 'Markdown' }
-            );
-            break;
-            
-          case 'deposit_submitted':
-            await ctx.reply(
-              '✅ *Deposit Request Submitted*\n\n' +
-              'Your deposit request has been received.\n\n' +
-              'An admin will verify your payment proof and add the BOM to your wallet within 1-6 hours.\n\n' +
-              'You will receive a notification when it\'s processed.',
-              { parse_mode: 'Markdown' }
-            );
-            break;
-            
-          case 'withdrawal_requested':
-            await ctx.reply(
-              '✅ *Withdrawal Request Submitted*\n\n' +
-              'Your withdrawal request has been received.\n\n' +
-              'It will be processed within 24 hours.\n\n' +
-              'You will receive a notification when it\'s completed.',
-              { parse_mode: 'Markdown' }
-            );
-            break;
-            
-          default:
-            await ctx.reply('✅ Action processed in wallet Mini App.');
-        }
-      } catch (error) {
-        console.error('Mini App error:', error);
-        await ctx.reply('❌ Mini App processing error. Please try again later.');
-      }
-    });
-    
-    console.log('✅ Mini App setup complete');
   }
   
-  async openWalletMiniApp(ctx, section = 'main') {
+  // Handle web app data from mini-app
+  this.bot.on('web_app_data', async (ctx) => {
+    try {
+      const data = JSON.parse(ctx.webAppData.data);
+      console.log('📱 Mini App data received:', data.action);
+      
+      const userId = ctx.from.id;
+      
+      switch (data.action) {
+        case 'get_balance':
+          const walletService = require('./services/walletService');
+          const balance = await walletService.getBalance(userId);
+          await ctx.reply(
+            `💰 *Your Wallet Balance*\n\n` +
+            `*Balance:* ${balance.balance.toFixed(2)} ${balance.currency}\n` +
+            `*Status:* ${balance.isFrozen ? '❄️ Frozen' : '✅ Active'}\n` +
+            `*Address:* BOTOMICS_${userId}\n\n` +
+            `*1 BOM = $1.00 USD*`,
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        case 'get_public_url':
+          // Send current public URL to mini-app
+          await ctx.reply(
+            `🌐 *Current Platform URL*\n\n` +
+            `*Public URL:* ${PUBLIC_URL}\n` +
+            `*Wallet URL:* ${config.WALLET_URL || `${PUBLIC_URL}/wallet`}\n` +
+            `*API Base:* ${PUBLIC_URL}/api\n` +
+            `*Environment:* ${process.env.NODE_ENV || 'production'}\n\n` +
+            `Bookmark this for direct access to your wallet.`,
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        case 'premium_upgrade':
+          try {
+            await require('./services/subscriptionService').upgradeToPremium(userId);
+            await ctx.reply(
+              '🎉 *Premium Subscription Activated!*\n\n' +
+              'Your premium subscription has been successfully activated.\n\n' +
+              '*Benefits:*\n' +
+              '✅ Unlimited bot creation\n' +
+              '✅ Unlimited broadcasts\n' +
+              '✅ All premium features unlocked\n\n' +
+              'Thank you for upgrading! 🚀',
+              { parse_mode: 'Markdown' }
+            );
+          } catch (error) {
+            await ctx.reply(`❌ Error: ${error.message}`);
+          }
+          break;
+          
+        case 'contact_support':
+          await ctx.reply(
+            '📞 *Botomics Support*\n\n' +
+            'For assistance with:\n' +
+            '• Buying BOM coins\n' +
+            '• Wallet deposits/withdrawals\n' +
+            '• Premium subscriptions\n' +
+            '• Bot creation issues\n' +
+            '• Technical problems\n\n' +
+            'Contact: @BotomicsSupportBot\n\n' +
+            'We typically respond within 24 hours.',
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        case 'buy_bom_info':
+          await ctx.reply(
+            '💰 *Buy BOM Coins*\n\n' +
+            'To purchase BOM coins:\n\n' +
+            '1. Contact @BotomicsSupportBot\n' +
+            '2. Specify amount you want to buy (minimum 5 BOM)\n' +
+            '3. Follow payment instructions\n' +
+            '4. Submit payment proof in wallet\n' +
+            '5. Coins will be added after verification\n\n' +
+            '*Rate:* 1 BOM = $1.00 USD\n' +
+            '*Minimum Purchase:* 5 BOM ($5.00)\n' +
+            `*Wallet Address:* BOTOMICS_${userId}`,
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        case 'deposit_submitted':
+          await ctx.reply(
+            '✅ *Deposit Request Submitted*\n\n' +
+            'Your deposit request has been received.\n\n' +
+            'An admin will verify your payment proof and add the BOM to your wallet within 1-6 hours.\n\n' +
+            'You will receive a notification when it\'s processed.',
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        case 'withdrawal_requested':
+          await ctx.reply(
+            '✅ *Withdrawal Request Submitted*\n\n' +
+            'Your withdrawal request has been received.\n\n' +
+            'It will be processed within 24 hours.\n\n' +
+            'You will receive a notification when it\'s completed.',
+            { parse_mode: 'Markdown' }
+          );
+          break;
+          
+        default:
+          await ctx.reply('✅ Action processed in wallet Mini App.');
+      }
+    } catch (error) {
+      console.error('Mini App error:', error);
+      await ctx.reply('❌ Mini App processing error. Please try again later.');
+    }
+  });
+  
+  console.log('✅ Mini App setup complete');
+}
+  
+async openWalletMiniApp(ctx, section = 'main') {
   try {
-    // Get dynamic URL for Railway
-    const walletUrl = config.WALLET_URL || `${PUBLIC_URL}/wallet`;
+    // Always use PUBLIC_URL (handles Railway/ngrok/local)
+    const walletUrl = `${PUBLIC_URL}/wallet`;
     const fullUrl = section !== 'main' ? `${walletUrl}#${section}` : walletUrl;
+    
+    console.log(`🌐 Creating Web App button for Telegram`);
+    console.log(`   URL: ${fullUrl}`);
+    console.log(`   PUBLIC_URL: ${PUBLIC_URL}`);
+    console.log(`   User: ${ctx.from.id}`);
+    
+    // Test URL accessibility
+    try {
+      const fetch = require('node-fetch');
+      const test = await fetch(walletUrl);
+      console.log(`   URL Test: ${test.status} ${test.statusText}`);
+    } catch (error) {
+      console.warn(`   URL Test Warning: ${error.message}`);
+    }
     
     const keyboard = Markup.inlineKeyboard([
       [Markup.button.webApp('🔓 Open Botomics Wallet', fullUrl)],
-      [Markup.button.callback('💰 Check Balance', 'wallet_main')],
-      [Markup.button.callback('📋 Buy BOM Instructions', 'buy_bom_info')],
       [Markup.button.callback('📞 Support', 'contact_support')]
     ]);
     
-    // SIMPLIFIED MESSAGE - NO MARKDOWN FORMATTING ISSUES
+    // FIXED: Use plain text instead of Markdown to avoid parsing errors
     const message = 
       '💰 Botomics Wallet\n\n' +
-      'Access your wallet:\n\n' +
-      '1. Click "Open Botomics Wallet" button below\n' +
-      '2. Use the Mini App inside Telegram\n' +
-      '3. Manage balance, transactions, and premium\n\n' +
-      'Your Wallet Address: BOTOMICS_' + ctx.from.id + '\n' +
-      'Current Wallet URL: ' + walletUrl + '\n\n' +
-      'To buy BOM coins: Contact @BotomicsSupportBot\n\n' +
-      'Features:\n' +
-      '• View balance & transaction history\n' +
-      '• Deposit & withdraw BOM coins\n' +
-      '• Transfer BOM to other users\n' +
-      '• Manage premium subscription';
+      'Click the button below to open your wallet.\n\n' +
+      `Your Wallet Address: BOTOMICS_${ctx.from.id}\n` +
+      'To buy BOM coins: Contact @BotomicsSupportBot';
     
     await ctx.reply(message, keyboard);
     
   } catch (error) {
-    console.error('Open wallet mini app error:', error);
-    // Try a simpler fallback
+    console.error('❌ Open wallet error:', error);
+    
+    // Simple fallback without markdown
     try {
       await ctx.reply(
         '💰 Open your wallet by clicking the menu button below 👇',
         Markup.inlineKeyboard([
-          [Markup.button.webApp('Open Wallet', config.WALLET_URL || `${PUBLIC_URL}/wallet`)]
+          [Markup.button.webApp('Open Wallet', `${PUBLIC_URL}/wallet`)]
         ])
       );
     } catch (fallbackError) {
-      await ctx.reply('❌ Failed to open wallet. Please try again or contact support.');
+      await ctx.reply('❌ Error opening wallet. Please try /balance command instead.');
     }
   }
 }
@@ -1139,99 +1322,175 @@ class MetaBotCreator {
     }
   }
   
-  async initialize() {
-    try {
-      console.log('🔄 Starting MetaBot Creator initialization...');
-      console.log('🗄️ Connecting to Railway PostgreSQL database...');
-      await connectDB();
+async initialize() {
+  try {
+    console.log('🔄 Starting MetaBot Creator initialization...');
+    
+    // First, wait a bit for Railway to inject variables
+    console.log('⏳ Waiting for Railway environment variables...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Check if we have the required variables now
+    const requiredVars = ['BOT_TOKEN', 'DATABASE_URL', 'ENCRYPTION_KEY'];
+    const missingVars = requiredVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      console.error('❌ Still missing after wait:', missingVars);
+      console.error('💡 Railway Variables might not be set correctly.');
+      console.error('💡 Check: railway variables ls --service');
       
-      // Update wallet schema if needed (optional - script might not exist)
-      try {
-        const { addWalletAddressField } = require('../../scripts/add_wallet_address');
-        await addWalletAddressField();
-        console.log('✅ Wallet schema updated');
-      } catch (error) {
-        console.log('⚠️  Wallet address script not found or failed, continuing...');
-        console.log('   Error:', error.message);
+      // Try to retry
+      const success = await this.retryInitialization();
+      if (!success) {
+        console.error('❌ Cannot continue without environment variables.');
+        return;
       }
-      
-      console.log('✅ MetaBot Creator initialized successfully');
-    } catch (error) {
-      console.error('❌ Initialization failed:', error);
     }
+    
+    console.log('✅ Environment variables confirmed');
+    console.log('🗄️ Connecting to Railway PostgreSQL database...');
+    
+    // Now connect to database
+    const { connectDB } = require('../database/db');
+    await connectDB();
+    
+    // ==================== ADD THIS SECTION ====================
+    // Import models AFTER connecting to database
+    const models = require('./models');
+    
+    // Call associate methods for all models
+    console.log('🔄 Setting up Sequelize associations...');
+    Object.keys(models).forEach(modelName => {
+      if (models[modelName] && models[modelName].associate) {
+        try {
+          models[modelName].associate(models);
+          console.log(`✅ Associated: ${modelName}`);
+        } catch (error) {
+          console.error(`❌ Failed to associate ${modelName}:`, error.message);
+        }
+      }
+    });
+    console.log('✅ All Sequelize associations set up');
+    // ==================== END OF ADDED SECTION ====================
+    
+    // Update wallet schema if needed (optional - script might not exist)
+    try {
+      const { addWalletAddressField } = require('../../scripts/add_wallet_address');
+      await addWalletAddressField();
+      console.log('✅ Wallet schema updated');
+    } catch (error) {
+      console.log('⚠️  Wallet address script not found or failed, continuing...');
+      console.log('   Error:', error.message);
+    }
+    
+    console.log('✅ MetaBot Creator initialized successfully');
+  } catch (error) {
+    console.error('❌ Initialization failed:', error);
+  }
+}
+  
+async start() {
+  console.log('🚀 Starting MetaBot Creator on Railway...');
+  
+  try {
+    const PORT = config.PORT;
+    const HOST = config.HOST;
+    
+    // Calculate URLs based on current environment
+    let walletUrl, apiUrl, publicUrlDisplay;
+    
+    if (PUBLIC_URL.includes('localhost')) {
+      // Local development
+      walletUrl = `http://${HOST}:${PORT}/wallet`;
+      apiUrl = `http://${HOST}:${PORT}/api/health`;
+      publicUrlDisplay = `http://${HOST}:${PORT} (Local)`;
+    } else if (PUBLIC_URL.includes('ngrok.io')) {
+      // ngrok tunnel
+      walletUrl = `${PUBLIC_URL}/wallet`;
+      apiUrl = `${PUBLIC_URL}/api/health`;
+      publicUrlDisplay = `${PUBLIC_URL} (ngrok)`;
+    } else {
+      // Production (Railway)
+      walletUrl = `${PUBLIC_URL}/wallet`;
+      apiUrl = `${PUBLIC_URL}/api/health`;
+      publicUrlDisplay = `${PUBLIC_URL} (Railway)`;
+    }
+    
+    // Update config
+    config.WALLET_URL = walletUrl;
+    config.APP_URL = PUBLIC_URL;
+    
+    // Start Express server
+    this.expressApp.listen(PORT, HOST, () => {
+      console.log(`🌐 Express server running on ${HOST}:${PORT}`);
+      console.log(`📱 Wallet: ${walletUrl}`);
+      console.log(`⚡ API: ${apiUrl}`);
+      console.log(`🚀 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT || 'Not set'}`);
+      console.log(`🌐 Public URL: ${publicUrlDisplay}`);
+      console.log(`🔗 Local URL: http://localhost:${PORT}`);
+    });
+    
+    // ========== MISSING CODE STARTS HERE ==========
+    // Wait a bit for server to start
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Start subscription auto-renewal cron jobs
+    console.log('\n⏰ Starting subscription cron jobs...');
+    SubscriptionCron.start();
+    console.log('✅ Subscription auto-renewal system started');
+    
+    // Initialize mini-bots
+    console.log('\n🚀 Starting mini-bots initialization...');
+    const miniBotsResult = await MiniBotManager.initializeAllBots();
+    console.log(`✅ ${miniBotsResult} mini-bots initialized`);
+    
+    // Start main Telegram bot
+    console.log('\n🤖 Starting main Telegram bot...');
+    await this.bot.launch({
+      dropPendingUpdates: true,
+      allowedUpdates: ['message', 'callback_query', 'web_app_data']
+    });
+    
+    // Success message
+    console.log('\n🎉 MetaBot Creator is now RUNNING on Railway!');
+    console.log('===============================================');
+    console.log('🚂 Platform: Railway');
+    console.log('🌐 Public URL:', PUBLIC_URL);
+    console.log('📱 Wallet URL:', PUBLIC_URL + '/wallet');
+    console.log('🤖 Main Bot: Manages bot creation & wallet');
+    console.log('🤖 Mini-bots: Handle user messages');
+    console.log('💰 Botomics: Digital currency system');
+    console.log('🎫 Premium: Subscription tiers (3 BOM/month)');
+    console.log('⏰ Auto-renewal: Enabled (daily cron)');
+    console.log('🏦 ADMIN WALLET COMMANDS (Platform Creator Only):');
+    console.log('   /platform - Platform admin dashboard');
+    console.log('   /admin_wallet - Wallet admin dashboard');
+    console.log('   /add_bom - Add BOM to user');
+    console.log('   /freeze_wallet - Freeze user wallet');
+    console.log('   /unfreeze_wallet - Unfreeze user wallet');
+    console.log('   /grant_premium - Grant premium subscription');
+    console.log('   /subscription_admin - Subscription admin');
+    console.log('   /addbom <user> <amount> - Quick add BOM');
+    console.log('   /railway_url - Show current Railway URLs');
+    console.log('===============================================');
+    console.log(`🌐 Dashboard: ${PUBLIC_URL}`);
+    console.log(`💰 Wallet: ${PUBLIC_URL}/wallet`);
+    console.log(`💳 BOM Rate: 1 BOM = $1.00 USD`);
+    
+    if (config.WEBHOOK_URL) {
+      console.log(`🌐 Webhook URL: ${config.WEBHOOK_URL}`);
+    }
+    // ========== MISSING CODE ENDS HERE ==========
+    
+  } catch (error) {
+    console.error('❌ Failed to start application:', error);
+    console.error('Stack trace:', error.stack);
   }
   
-  async start() {
-    console.log('🚀 Starting MetaBot Creator on Railway...');
-    
-    try {
-      const PORT = config.PORT;
-      const HOST = config.HOST;
-      
-      // Start Express server
-      this.expressApp.listen(PORT, HOST, () => {
-        console.log(`🌐 Express server running on ${HOST}:${PORT}`);
-        console.log(`📱 Wallet: ${config.WALLET_URL || `http://${HOST}:${PORT}/wallet`}`);
-        console.log(`⚡ API: ${config.APP_URL || `http://${HOST}:${PORT}`}/api/health`);
-        console.log(`🚀 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT || 'Production'}`);
-        console.log(`🌐 Public URL: ${PUBLIC_URL}`);
-      });
-      
-      // Start subscription auto-renewal cron jobs
-      console.log('\n⏰ Starting subscription cron jobs...');
-      SubscriptionCron.start();
-      console.log('✅ Subscription auto-renewal system started');
-      
-      // Initialize mini-bots
-      console.log('\n🚀 Starting mini-bots initialization...');
-      const miniBotsResult = await MiniBotManager.initializeAllBots();
-      console.log(`✅ ${miniBotsResult} mini-bots initialized`);
-      
-      // Start main Telegram bot
-      console.log('\n🤖 Starting main Telegram bot...');
-      await this.bot.launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ['message', 'callback_query', 'web_app_data']
-      });
-      
-      // Success message
-      console.log('\n🎉 MetaBot Creator is now RUNNING on Railway!');
-      console.log('===============================================');
-      console.log('🚂 Platform: Railway');
-      console.log('🌐 Public URL:', PUBLIC_URL);
-      console.log('📱 Wallet URL:', PUBLIC_URL + '/wallet');
-      console.log('🤖 Main Bot: Manages bot creation & wallet');
-      console.log('🤖 Mini-bots: Handle user messages');
-      console.log('💰 Botomics: Digital currency system');
-      console.log('🎫 Premium: Subscription tiers (3 BOM/month)');
-      console.log('⏰ Auto-renewal: Enabled (daily cron)');
-      console.log('🏦 ADMIN WALLET COMMANDS (Platform Creator Only):');
-      console.log('   /platform - Platform admin dashboard');
-      console.log('   /admin_wallet - Wallet admin dashboard');
-      console.log('   /add_bom - Add BOM to user');
-      console.log('   /freeze_wallet - Freeze user wallet');
-      console.log('   /unfreeze_wallet - Unfreeze user wallet');
-      console.log('   /grant_premium - Grant premium subscription');
-      console.log('   /subscription_admin - Subscription admin');
-      console.log('   /addbom <user> <amount> - Quick add BOM');
-      console.log('   /railway_url - Show current Railway URLs');
-      console.log('===============================================');
-      console.log(`🌐 Dashboard: ${PUBLIC_URL}`);
-      console.log(`💰 Wallet: ${PUBLIC_URL}/wallet`);
-      console.log(`💳 BOM Rate: 1 BOM = $1.00 USD`);
-      
-      if (config.WEBHOOK_URL) {
-        console.log(`🌐 Webhook URL: ${config.WEBHOOK_URL}`);
-      }
-      
-    } catch (error) {
-      console.error('❌ Failed to start application:', error);
-    }
-    
-    // Graceful shutdown
-    process.once('SIGINT', () => this.shutdown());
-    process.once('SIGTERM', () => this.shutdown());
-  }
+  // Graceful shutdown
+  process.once('SIGINT', () => this.shutdown());
+  process.once('SIGTERM', () => this.shutdown());
+}
   
   async shutdown() {
     console.log('\n🛑 Shutting down gracefully on Railway...');

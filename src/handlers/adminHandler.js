@@ -3,9 +3,56 @@ const { Bot, Admin, User } = require('../models');
 const { checkAdminAccess, escapeMarkdown } = require('../utils/helpers');
 const { validateUserId, validateUsername } = require('../utils/validators');
 const config = require('../config/environment');
+const SubscriptionService = require('../services/subscriptionService');
 
 // Store admin management sessions
 const adminSessions = new Map();
+
+// Helper function to check co-admin limit
+async function checkCoAdminLimit(userId, botId) {
+  try {
+    // Get user's subscription tier
+    const tier = await SubscriptionService.getSubscriptionTier(userId);
+    
+    // Premium users have no limit
+    if (tier === 'premium') {
+      return { canAdd: true, reason: '', tier: 'premium' };
+    }
+    
+    // Fremium users: count existing co-admins (excluding owner)
+    const bot = await Bot.findByPk(botId);
+    if (!bot) {
+      return { canAdd: false, reason: 'Bot not found', tier: 'freemium' };
+    }
+    
+    const coAdminCount = await Admin.count({
+      where: {
+        bot_id: botId,
+        admin_user_id: { [require('sequelize').Op.ne]: bot.owner_id }
+      }
+    });
+    
+    // Fremium users can only have 1 co-admin
+    if (coAdminCount >= 1) {
+      return { 
+        canAdd: false, 
+        reason: `❌ *Freemium Co-Admin Limit Reached*\n\n` +
+                `Freemium users can only have *1 co-admin*.\n` +
+                `You currently have ${coAdminCount} co-admin(s).\n\n` +
+                `💎 *Upgrade to Premium* for unlimited co-admins!`,
+        tier: 'freemium',
+        currentCount: coAdminCount,
+        limit: 1
+      };
+    }
+    
+    return { canAdd: true, reason: '', tier: 'freemium', currentCount: coAdminCount, limit: 1 };
+    
+  } catch (error) {
+    console.error('Check co-admin limit error:', error);
+    return { canAdd: false, reason: 'Error checking limit', tier: 'freemium' };
+  }
+}
 
 const adminHandler = async (ctx, isCallback = false, botId = null) => {
   try {
@@ -35,6 +82,18 @@ const adminHandler = async (ctx, isCallback = false, botId = null) => {
       return;
     }
     
+    // Check user's subscription tier
+    const tier = await SubscriptionService.getSubscriptionTier(userId);
+    const isPremium = tier === 'premium';
+    
+    // Count co-admins (excluding owner)
+    const coAdminCount = await Admin.count({
+      where: {
+        bot_id: access.bot.id,
+        admin_user_id: { [require('sequelize').Op.ne]: access.bot.owner_id }
+      }
+    });
+    
     // Get current admins with proper association
     const admins = await Admin.findAll({
       where: { bot_id: access.bot.id },
@@ -48,6 +107,9 @@ const adminHandler = async (ctx, isCallback = false, botId = null) => {
     });
     
     let message = `👥 *Admin Management for ${access.bot.bot_name}*\n\n` +
+      `*Subscription:* ${isPremium ? '💎 Premium' : '🆓 Freemium'}\n` +
+      `*Co-admin limit:* ${isPremium ? 'Unlimited' : '1 max'}\n` +
+      `*Current co-admins:* ${coAdminCount}/${isPremium ? '∞' : '1'}\n\n` +
       `*Total Admins:* ${admins.length}\n\n` +
       `*Current Admins:*\n`;
     
@@ -111,8 +173,25 @@ const addAdminHandler = async (ctx, botId) => {
       return;
     }
     
+    // Check co-admin limit based on subscription tier
+    const limitCheck = await checkCoAdminLimit(userId, botId);
+    if (!limitCheck.canAdd) {
+      const message = limitCheck.reason || '❌ Cannot add more co-admins.';
+      
+      await ctx.editMessageText(message, { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+          [Markup.button.callback('🔙 Back to Admins', `admins:${botId}`)]
+        ])
+      });
+      return;
+    }
+    
     const message = `👥 *Add New Admin*\n\n` +
       `*Bot:* ${access.bot.bot_name}\n\n` +
+      `Your subscription: *${limitCheck.tier === 'premium' ? '💎 Premium (Unlimited co-admins)' : '🆓 Freemium (1 co-admin max)'}*\n` +
+      `Current co-admins: ${limitCheck.currentCount || 0}/${limitCheck.limit || 1}\n\n` +
       `Please provide the new admin's Telegram *User ID* or *Username*:\n\n` +
       `*How to get User ID:*\n` +
       `• Forward a message from the user to @userinfobot\n` +
@@ -311,6 +390,19 @@ const handleAdminInput = async (ctx) => {
 
 async function processAddAdmin(ctx, session, targetUserId, targetUsername) {
   try {
+    // Check co-admin limit again (in case something changed)
+    const limitCheck = await checkCoAdminLimit(ctx.from.id, session.botId);
+    if (!limitCheck.canAdd) {
+      await ctx.reply(limitCheck.reason, { 
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('💎 Upgrade to Premium', 'premium_upgrade')],
+          [Markup.button.callback('🔙 Back to Admins', `admins:${session.botId}`)]
+        ])
+      });
+      return;
+    }
+    
     // If username provided, try to find user
     let finalUserId = targetUserId;
     if (targetUsername) {

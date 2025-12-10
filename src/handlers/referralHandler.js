@@ -585,25 +585,19 @@ static async processCurrencySetting(ctx, botId, input) {
     }
   }
 
-  // Show referral dashboard to users - FIXED: Show updated balance
-  static async showReferralDashboard(ctx, botId) {
-    try {
-      let program = await ReferralProgram.findOne({ where: { bot_id: botId } });
-      
-      if (!program) {
-        program = await this.setupReferralProgram(botId);
-      }
-      
-      if (!program || !program.is_enabled) {
-        await ctx.reply(
-          '❌ Referral program is not currently active.\n\n' +
-          'Please check back later or contact the bot owner.',
-          Markup.inlineKeyboard([
-            [Markup.button.callback('🔙 Back', 'back_to_bot')]
-          ])
-        );
-        return;
-      }
+// Show referral dashboard to users - FIXED: Show updated balance
+static async showReferralDashboard(ctx, botId) {
+  try {
+    let program = await ReferralProgram.findOne({ where: { bot_id: botId } });
+    
+    if (!program) {
+      program = await this.setupReferralProgram(botId);
+    }
+    
+    if (!program || !program.is_enabled) {
+      await ctx.reply('❌ Referral program is not currently active in this bot.');
+      return;
+    }
 
       const stats = await this.getUserReferralStats(botId, ctx.from.id);
       const referralCode = this.generateReferralCode(ctx.from.id, botId);
@@ -772,65 +766,83 @@ static async processCurrencySetting(ctx, botId, input) {
 
   // Show user's referrals
   static async showUserReferrals(ctx, botId) {
-    try {
-      const referrals = await Referral.findAll({
-        where: { 
-          bot_id: botId, 
-          referrer_id: ctx.from.id 
-        },
-        include: [{
-          model: User,
-          as: 'ReferredUser', // Use the correct alias
-          attributes: ['username', 'first_name']
-        }],
-        order: [['created_at', 'DESC']],
-        limit: 20
-      });
+  try {
+    // FIXED: Explicitly include with 'as' keyword and only necessary attributes
+    const referrals = await Referral.findAll({
+      where: { 
+        bot_id: botId, 
+        referrer_id: ctx.from.id 
+      },
+      include: [{
+        model: User,
+        as: 'ReferredUser', // Explicitly specify the alias
+        attributes: ['username', 'first_name'],
+        required: false // Use LEFT JOIN in case user doesn't exist
+      }],
+      order: [['created_at', 'DESC']],
+      limit: 20
+    });
 
-      const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
-      const stats = await this.getUserReferralStats(botId, ctx.from.id);
+    const program = await ReferralProgram.findOne({ where: { bot_id: botId } });
+    const stats = await this.getUserReferralStats(botId, ctx.from.id);
 
-      let message = `👥 <b>Your Referrals</b>\n\n` +
-        `<b>Summary:</b>\n` +
-        `• Total: ${stats.totalReferrals}\n` +
-        `• Completed: ${stats.completedReferrals}\n` +
-        `• Earnings: ${program.currency} ${stats.totalEarnings.toFixed(2)}\n` +
-        `• Withdrawn: ${program.currency} ${stats.totalWithdrawn.toFixed(2)}\n` +
-        `• <b>Current Balance: ${program.currency} ${stats.currentBalance.toFixed(2)}</b>\n\n`;
+    let message = `👥 <b>Your Referrals</b>\n\n` +
+      `<b>Summary:</b>\n` +
+      `• Total: ${stats.totalReferrals}\n` +
+      `• Completed: ${stats.completedReferrals}\n` +
+      `• Earnings: ${program.currency} ${stats.totalEarnings.toFixed(2)}\n` +
+      `• Withdrawn: ${program.currency} ${stats.totalWithdrawn.toFixed(2)}\n` +
+      `• <b>Current Balance: ${program.currency} ${stats.currentBalance.toFixed(2)}</b>\n\n`;
 
-      if (referrals.length === 0) {
-        message += `No referrals yet. Share your link to start earning! 💰`;
-      } else {
-        message += `<b>Recent Referrals:</b>\n`;
-        referrals.forEach((ref, index) => {
-          const userInfo = ref.ReferredUser?.username ? 
+    if (referrals.length === 0) {
+      message += `No referrals yet. Share your link to start earning! 💰`;
+    } else {
+      message += `<b>Recent Referrals:</b>\n`;
+      referrals.forEach((ref, index) => {
+        // FIXED: Handle null ReferredUser gracefully
+        let userInfo;
+        if (ref.ReferredUser) {
+          userInfo = ref.ReferredUser.username ? 
             `@${ref.ReferredUser.username}` : 
-            ref.ReferredUser?.first_name || `User#${ref.referred_id}`;
-          
-          const status = ref.is_completed ? '✅' : '⏳';
-          const amount = ref.is_completed ? `${program.currency} ${ref.amount_earned}` : 'Pending';
-          
-          message += `${index + 1}. ${userInfo} ${status} ${amount}\n`;
-        });
-      }
-
-      const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('📤 Share Link', `share_ref_${botId}`)],
-        [Markup.button.callback('💰 Withdraw', `withdraw_${botId}`)],
-        [Markup.button.callback('🔙 Dashboard', `ref_dashboard_${botId}`)]
-      ]);
-
-      if (ctx.updateType === 'callback_query' && ctx.callbackQuery?.message) {
-        await this.safeEditMessageWithHTML(ctx, message, keyboard);
-      } else {
-        await this.safeReplyWithHTML(ctx, message, keyboard);
-      }
-
-    } catch (error) {
-      console.error('Show user referrals error:', error);
-      await ctx.reply('❌ Error loading referrals.');
+            ref.ReferredUser.first_name || `User#${ref.referred_id}`;
+        } else {
+          userInfo = `User#${ref.referred_id}`;
+        }
+        
+        const status = ref.is_completed ? '✅' : '⏳';
+        const amount = ref.is_completed ? `${program.currency} ${ref.amount_earned}` : 'Pending';
+        
+        message += `${index + 1}. ${userInfo} ${status} ${amount}\n`;
+      });
     }
+
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('📤 Share Link', `share_ref_${botId}`)],
+      [Markup.button.callback('💰 Withdraw', `withdraw_${botId}`)],
+      [Markup.button.callback('🔙 Dashboard', `ref_dashboard_${botId}`)]
+    ]);
+
+    if (ctx.updateType === 'callback_query' && ctx.callbackQuery?.message) {
+      await this.safeEditMessageWithHTML(ctx, message, keyboard);
+    } else {
+      await this.safeReplyWithHTML(ctx, message, keyboard);
+    }
+
+  } catch (error) {
+    console.error('Show user referrals error:', error);
+    
+    // More detailed error logging
+    if (error.name === 'SequelizeEagerLoadingError') {
+      console.error('Eager loading error details:', {
+        botId,
+        userId: ctx.from.id,
+        errorMessage: error.message
+      });
+    }
+    
+    await ctx.reply('❌ Error loading referrals. Please try again.');
   }
+}
 
   // Handle withdrawal request
   static async handleWithdrawal(ctx, botId) {

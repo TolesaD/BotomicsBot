@@ -1,12 +1,25 @@
 {
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install"
+    "buildCommand": "npm install",
+    "nixpacksConfig": {
+      "phases": {
+        "setup": {
+          "aptPkgs": ["python3", "make", "g++"]
+        }
+      }
+    }
   },
   "deploy": {
     "startCommand": "node src/app.js",
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 30,
-    "startTimeout": 120
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 60,
+    "startTimeout": 180,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  },
+  "static": {
+    "directory": "wallet",
+    "publicPath": "/wallet"
   }
 }

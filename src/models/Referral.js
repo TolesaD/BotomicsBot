@@ -41,11 +41,15 @@ const Referral = sequelize.define('Referral', {
   },
   created_at: {
     type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
+    defaultValue: DataTypes.NOW,
+    allowNull: true // Add this temporarily to fix existing NULL values
   }
 }, {
   tableName: 'referrals',
-  timestamps: true, // Changed from false to true for automatic createdAt/updatedAt
+  timestamps: true, // This creates createdAt and updatedAt automatically
+  createdAt: 'created_at', // Map Sequelize's createdAt to your created_at column
+  updatedAt: false, // You don't have updated_at column, so disable it
+  underscored: true, // This converts camelCase to snake_case automatically
   indexes: [
     {
       fields: ['bot_id', 'referrer_id']
@@ -68,7 +72,7 @@ Referral.associate = (models) => {
   
   Referral.belongsTo(models.User, {
     foreignKey: 'referred_id',
-    as: 'ReferredUser' // This alias should match what we use in ReferralHandler
+    as: 'ReferredUser'
   });
   
   Referral.belongsTo(models.Bot, {
