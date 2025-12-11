@@ -533,11 +533,15 @@ app.post('/api/admin/deposit/:id/approve', authenticate, async (req, res) => {
     }
 });
 
-// Serve SPA for all other routes
-app.get('/wallet', (req, res) => {
+// Serve static files for /wallet (JS, CSS, images)
+app.use('/wallet', express.static(path.join(__dirname)));
+
+// SPA fallback: send index.html for any /wallet/* route
+app.get('/wallet/*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Redirect root / to /wallet
 app.get('/', (req, res) => {
     res.redirect('/wallet');
 });

@@ -1,8 +1,18 @@
 // wallet/app.js - COMPLETE PRODUCTION VERSION
 const tg = window.Telegram.WebApp;
+tg.expand();
+
+// ============================================
+// 🔐 Telegram Authentication Validation (REQUIRED)
+// ============================================
+if (!tg.initData || tg.initData.length < 20) {
+    showAlert("WebApp authentication failed. Please open from @BotomicsBot", "error");
+    console.error("❌ Missing or invalid initData:", tg.initData);
+    return; // stop loading the wallet
+}
 
 // Use Railway deployment path
-const BACKEND_URL = '/api';
+const BACKEND_URL = 'https://botomics.up.railway.app/api'; 
 const BOTOMICS_SUPPORT_BOT = '@BotomicsSupportBot';
 
 // Telegram Web App initialization
@@ -128,7 +138,7 @@ async function loadBalance() {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             }
         });
         
@@ -233,7 +243,7 @@ async function loadSubscription() {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             }
         });
         
@@ -338,7 +348,7 @@ async function loadHistory(page = 1, filters = {}) {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             }
         });
         
@@ -582,7 +592,7 @@ async function submitDepositProof() {
         const uploadResponse = await fetch(`${BACKEND_URL}/upload/proof`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             },
             body: formData
         });
@@ -598,7 +608,7 @@ async function submitDepositProof() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             },
             body: JSON.stringify({
                 userId: currentUser?.id,
@@ -659,7 +669,7 @@ async function submitWithdrawalRequest() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             },
             body: JSON.stringify({
                 userId: currentUser?.id,
@@ -731,7 +741,7 @@ async function submitTransfer() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             },
             body: JSON.stringify({
                 senderId: currentUser?.id,
@@ -780,7 +790,7 @@ async function upgradeToPremium(plan) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             },
             body: JSON.stringify({
                 userId: currentUser?.id,
@@ -818,7 +828,7 @@ async function cancelPremium() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             },
             body: JSON.stringify({
                 userId: currentUser?.id
@@ -853,7 +863,7 @@ async function toggleAutoRenew() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${tg.initData}`
+                'X-Telegram-Init-Data': tg.initData
             },
             body: JSON.stringify({
                 userId: currentUser?.id,

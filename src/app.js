@@ -198,6 +198,8 @@ setupExpress() {
                    process.env.RAILWAY_PUBLIC_URL;
   
   console.log(`🚂 Running on Railway: ${isRailway ? 'Yes' : 'No'}`);
+  console.log(`🌐 PUBLIC_URL: ${PUBLIC_URL}`);
+  console.log(`📁 Current directory: ${process.cwd()}`);
   
   // ========== FIX 1: CRITICAL - ADD RAILWAY HEALTH CHECK ENDPOINT ==========
   // Railway expects this at the root level (/health) not at /api/health
@@ -262,90 +264,212 @@ setupExpress() {
   // Wallet API routes
   this.expressApp.use('/api', walletRoutes);
   console.log('✅ Wallet API routes registered at /api');
-
-  // Add this middleware at the TOP of your setupExpress() method, BEFORE static file serving:
-this.expressApp.use((req, res, next) => {
-  // Set header to skip ngrok browser warning
-  res.setHeader('ngrok-skip-browser-warning', 'true');
   
-  // Also add these for better compatibility:
-  res.setHeader('X-ngrok-skip-browser-warning', 'true');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  // ========== CRITICAL FIX: WALLET STATIC FILE SERVING ==========
+  console.log('\n🔍 Looking for wallet directory...');
   
-  next();
-});
-  
-  // ========== CRITICAL: STATIC FILE SERVING ==========
-  // Determine correct wallet path for Railway
+  const fs = require('fs');
   let walletPath;
   
-  if (isRailway) {
-    // Railway deployment - use absolute path
-    walletPath = path.join(process.cwd(), 'wallet');
-    console.log(`🚂 Railway mode: Serving wallet from ${walletPath}`);
-  } else {
-    // Local development
-    walletPath = path.join(__dirname, '../wallet');
-    console.log(`🔧 Local mode: Serving wallet from ${walletPath}`);
+  // Try multiple possible locations for wallet directory
+  const possiblePaths = [
+    // 1. Railway deployment path (most likely)
+    path.join(process.cwd(), 'wallet'),
+    
+    // 2. Relative to current directory
+    path.join(__dirname, '../../wallet'),
+    
+    // 3. Project root
+    path.join(process.cwd(), '../wallet'),
+    
+    // 4. From src directory
+    path.join(__dirname, '../wallet')
+  ];
+  
+  // Find which path exists
+  for (const possiblePath of possiblePaths) {
+    console.log(`   Checking: ${possiblePath}`);
+    if (fs.existsSync(possiblePath)) {
+      walletPath = possiblePath;
+      console.log(`   ✅ Found wallet at: ${walletPath}`);
+      break;
+    }
   }
   
-  // Verify wallet exists
-  const fs = require('fs');
-  if (!fs.existsSync(walletPath)) {
-    console.error(`❌ ERROR: Wallet directory not found at ${walletPath}`);
-    console.log(`🔍 Current directory: ${process.cwd()}`);
-    console.log(`🔍 Listing project root:`);
-    try {
-      const rootFiles = fs.readdirSync(process.cwd());
-      console.log(`   ${rootFiles.join(', ')}`);
-    } catch (e) {
-      console.log(`   Cannot list directory: ${e.message}`);
-    }
-    
-    // Create wallet directory with basic content
+  // If wallet not found, create it
+  if (!walletPath) {
+    console.log('❌ Wallet directory not found in any location!');
     console.log('📁 Creating wallet directory...');
+    
+    // Create wallet in current working directory (Railway's preferred location)
+    walletPath = path.join(process.cwd(), 'wallet');
     fs.mkdirSync(walletPath, { recursive: true });
     
-    // Create basic index.html
-    const basicHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Botomics Wallet</title>
-      <style>
-        body { font-family: Arial; padding: 40px; text-align: center; }
-        .status { color: green; font-weight: bold; }
-      </style>
-    </head>
-    <body>
-      <h1>💰 Botomics Wallet</h1>
-      <p class="status">✅ Running on ${isRailway ? 'Railway' : 'Local'}</p>
-      <p>URL: ${PUBLIC_URL}/wallet</p>
-      <p>Time: ${new Date().toISOString()}</p>
-      <p>Environment: ${process.env.NODE_ENV || 'development'}</p>
-      <p>Platform: ${isRailway ? 'Railway 🚂' : 'Local 🖥️'}</p>
-    </body>
-    </html>
-    `;
+    // Create a simple index.html for testing
+    const indexHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Botomics Wallet</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            margin-top: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .info-box {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .button {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 10px 5px;
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        .test-box {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💰 Botomics Wallet</h1>
+        
+        <div class="status">
+            ✅ <strong>Status:</strong> Running on Railway
+        </div>
+        
+        <div class="info-box">
+            <h3>Platform Information</h3>
+            <p><strong>URL:</strong> ${PUBLIC_URL}/wallet</p>
+            <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'production'}</p>
+            <p><strong>Railway Service:</strong> ${process.env.RAILWAY_SERVICE_NAME || 'Botomics'}</p>
+            <p><strong>Time:</strong> <span id="currentTime">${new Date().toISOString()}</span></p>
+        </div>
+        
+        <div class="info-box">
+            <h3>Quick Links</h3>
+            <a href="/api/health" class="button">📊 API Health</a>
+            <a href="/health" class="button">🚂 Railway Health</a>
+            <a href="/api/public-url" class="button">🌐 URL Info</a>
+            <a href="/" class="button">🏠 Home</a>
+        </div>
+        
+        <div class="test-box">
+            <h4>Debug Information</h4>
+            <p><strong>Public URL:</strong> ${PUBLIC_URL}</p>
+            <p><strong>Wallet Path:</strong> ${walletPath}</p>
+            <p><strong>Current Directory:</strong> ${process.cwd()}</p>
+            <p><strong>Is Railway:</strong> ${isRailway ? 'Yes' : 'No'}</p>
+        </div>
+        
+        <div style="margin-top: 30px; font-size: 0.9em; opacity: 0.8;">
+            <p>Botomics Wallet • Powered by Railway • Node.js ${process.version}</p>
+            <p>This is a basic wallet interface. Your full wallet will be loaded here.</p>
+        </div>
+    </div>
     
-    fs.writeFileSync(path.join(walletPath, 'index.html'), basicHtml);
+    <script>
+        // Update time every second
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toISOString();
+        }
+        setInterval(updateTime, 1000);
+        
+        // Test API connection
+        async function testApi() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                alert('API Connection Successful!\\n' + JSON.stringify(data, null, 2));
+            } catch (error) {
+                alert('API Connection Failed: ' + error.message);
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            console.log('Botomics Wallet Loaded');
+            console.log('Public URL:', '${PUBLIC_URL}');
+            console.log('Wallet URL:', '${PUBLIC_URL}/wallet');
+        });
+    </script>
+</body>
+</html>`;
+    
+    fs.writeFileSync(path.join(walletPath, 'index.html'), indexHtml);
     console.log('✅ Created basic wallet index.html');
-  } else {
-    console.log(`✅ Wallet directory found at ${walletPath}`);
-    const files = fs.readdirSync(walletPath);
-    console.log(`📁 Files in wallet: ${files.join(', ')}`);
   }
   
-  // Serve static files
+  // List files in wallet directory
+  const walletFiles = fs.readdirSync(walletPath);
+  console.log(`📁 Files in wallet directory (${walletFiles.length} files):`);
+  walletFiles.forEach(file => console.log(`   - ${file}`));
+  
+  // Serve static files from wallet directory
+  console.log(`📤 Serving static files from: ${walletPath}`);
+  
+  // Serve static files with proper headers
   this.expressApp.use('/wallet', express.static(walletPath, {
-    setHeaders: (res, path) => {
+    setHeaders: (res, filePath) => {
       // Set CORS headers for static files
       res.set('Access-Control-Allow-Origin', '*');
       res.set('ngrok-skip-browser-warning', 'true');
       
-      // Cache control for production
+      // Set proper MIME types
+      if (filePath.endsWith('.js')) {
+        res.set('Content-Type', 'application/javascript');
+      } else if (filePath.endsWith('.css')) {
+        res.set('Content-Type', 'text/css');
+      } else if (filePath.endsWith('.html')) {
+        res.set('Content-Type', 'text/html');
+      }
+      
+      // Cache control
       if (isRailway) {
         res.set('Cache-Control', 'public, max-age=3600');
       }
@@ -354,43 +478,134 @@ this.expressApp.use((req, res, next) => {
   
   // Handle /wallet route
   this.expressApp.get('/wallet', (req, res) => {
-    console.log(`📥 GET /wallet from ${req.headers.host}`);
+    console.log(`📥 GET /wallet from ${req.headers['user-agent'] || 'unknown'}`);
+    console.log(`   Host: ${req.headers.host}`);
+    console.log(`   Referer: ${req.headers.referer || 'none'}`);
+    
     const indexPath = path.join(walletPath, 'index.html');
     
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
     } else {
-      res.status(404).send(`
-        <h1>Wallet Index Not Found</h1>
-        <p>Looking for: ${indexPath}</p>
-        <p>Wallet directory: ${walletPath}</p>
-        <p>Files in directory: ${fs.readdirSync(walletPath).join(', ')}</p>
+      // Create a fallback response
+      res.status(200).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Botomics Wallet</title>
+            <style>
+                body { font-family: Arial; padding: 40px; text-align: center; }
+                .error { color: #ff6b6b; }
+                .info { background: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0; }
+            </style>
+        </head>
+        <body>
+            <h1>💰 Botomics Wallet</h1>
+            <p class="error">⚠️ Index file not found at: ${indexPath}</p>
+            <div class="info">
+                <p><strong>Public URL:</strong> ${PUBLIC_URL}</p>
+                <p><strong>Wallet Path:</strong> ${walletPath}</p>
+                <p><strong>Files in directory:</strong> ${fs.readdirSync(walletPath).join(', ')}</p>
+                <p><strong>Request Time:</strong> ${new Date().toISOString()}</p>
+            </div>
+            <p>Try accessing: <a href="/">Home</a> | <a href="/api/health">API Health</a></p>
+        </body>
+        </html>
       `);
     }
   });
   
   // Handle /wallet/* paths for SPA routing
   this.expressApp.get('/wallet/*', (req, res) => {
-    res.sendFile(path.join(walletPath, 'index.html'));
+    console.log(`📥 GET /wallet/*: ${req.path}`);
+    const indexPath = path.join(walletPath, 'index.html');
+    
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send('Wallet not found');
+    }
   });
   
-  // ========== FIX 2: ADD ROOT TEST ENDPOINT ==========
+  // ========== ADD TEST ENDPOINTS ==========
   this.expressApp.get('/test', (req, res) => {
     res.json({
       message: 'Botomics Platform Test',
       timestamp: new Date().toISOString(),
       publicUrl: PUBLIC_URL,
       walletUrl: `${PUBLIC_URL}/wallet`,
-      availableEndpoints: ['GET /', 'GET /health', 'GET /api/health', 'GET /wallet', 'GET /api/public-url']
+      availableEndpoints: [
+        'GET /',
+        'GET /health',
+        'GET /api/health',
+        'GET /wallet',
+        'GET /api/public-url',
+        'GET /test'
+      ]
     });
+  });
+  
+  this.expressApp.get('/test-wallet', (req, res) => {
+    // Test if wallet is accessible
+    const testHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wallet Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .success { color: green; }
+        .error { color: red; }
+        .test { margin: 10px 0; padding: 10px; border-left: 3px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Wallet Accessibility Test</h1>
+    <div id="results"></div>
+    <script>
+        async function runTests() {
+            const results = document.getElementById('results');
+            const tests = [
+                { name: 'Test 1: Root Health', url: '/health' },
+                { name: 'Test 2: API Health', url: '/api/health' },
+                { name: 'Test 3: Wallet Index', url: '/wallet' },
+                { name: 'Test 4: Public URL', url: '/api/public-url' }
+            ];
+            
+            for (const test of tests) {
+                const div = document.createElement('div');
+                div.className = 'test';
+                div.innerHTML = \`<strong>\${test.name}:</strong> Testing...\`;
+                results.appendChild(div);
+                
+                try {
+                    const response = await fetch(test.url);
+                    if (response.ok) {
+                        div.innerHTML = \`<strong>\${test.name}:</strong> <span class="success">✅ Success (\${response.status})</span>\`;
+                    } else {
+                        div.innerHTML = \`<strong>\${test.name}:</strong> <span class="error">❌ Failed (\${response.status})</span>\`;
+                    }
+                } catch (error) {
+                    div.innerHTML = \`<strong>\${test.name}:</strong> <span class="error">❌ Error: \${error.message}</span>\`;
+                }
+            }
+        }
+        
+        runTests();
+    </script>
+</body>
+</html>`;
+    
+    res.send(testHtml);
   });
   
   // Root route
   this.expressApp.get('/', (req, res) => {
-    // If accessed via ngrok or Railway, redirect to wallet
-    if (req.headers.host.includes('ngrok') || 
-        req.headers.host.includes('railway') ||
-        isRailway) {
+    const isTelegram = req.headers['user-agent']?.includes('Telegram') || 
+                      req.headers.referer?.includes('t.me');
+    
+    if (isTelegram || req.headers.host.includes('railway')) {
+      // For Telegram or Railway, redirect to wallet
       return res.redirect('/wallet');
     }
     
@@ -419,6 +634,7 @@ this.expressApp.use((req, res, next) => {
           <a href="/api/public-url" class="link-btn">🌐 URL Info</a>
           <a href="${PUBLIC_URL}/wallet" class="link-btn">🔗 Public Wallet</a>
           <a href="/test" class="link-btn">🧪 Test Endpoint</a>
+          <a href="/test-wallet" class="link-btn">🔧 Wallet Test</a>
         </div>
         
         <div class="info-box">
@@ -428,6 +644,8 @@ this.expressApp.use((req, res, next) => {
           <p><strong>Wallet URL:</strong> ${PUBLIC_URL}/wallet</p>
           <p><strong>Platform:</strong> ${isRailway ? 'Railway 🚂' : 'Local 🖥️'}</p>
           <p><strong>Server Time:</strong> ${new Date().toISOString()}</p>
+          <p><strong>Wallet Path:</strong> ${walletPath}</p>
+          <p><strong>Telegram Access:</strong> ${isTelegram ? 'Yes' : 'No'}</p>
         </div>
         
         <div style="margin-top: 30px; font-size: 12px; color: #666;">
@@ -438,24 +656,31 @@ this.expressApp.use((req, res, next) => {
     `);
   });
   
-  // ========== FIX 3: UPDATE 404 HANDLER ==========
+  // ========== UPDATE 404 HANDLER ==========
   this.expressApp.use((req, res) => {
+    console.log(`❌ 404 Not Found: ${req.method} ${req.url}`);
+    console.log(`   Host: ${req.headers.host}`);
+    console.log(`   User-Agent: ${req.headers['user-agent']}`);
+    
     res.status(404).json({
       error: 'Not Found',
       message: `Route ${req.method} ${req.url} not found`,
       timestamp: new Date().toISOString(),
+      publicUrl: PUBLIC_URL,
       availableRoutes: [
         'GET /',
         'GET /health',
         'GET /wallet',
         'GET /api/health',
         'GET /api/public-url',
-        'GET /test'
+        'GET /test',
+        'GET /test-wallet'
       ]
     });
   });
   
   console.log('✅ Express server setup complete for Railway');
+  console.log(`🌐 Wallet will be served at: ${PUBLIC_URL}/wallet`);
 }
   
   setupHandlers() {
@@ -1009,15 +1234,23 @@ async openWalletMiniApp(ctx, section = 'main') {
     ]);
     
     // FIXED: Use plain text instead of Markdown to avoid parsing errors
-    const message = 
+        const message = 
       '💰 Botomics Wallet\n\n' +
-      'Click the button below to open your wallet.\n\n' +
+      'Access your wallet:\n\n' +
+      '1. Click "Open Botomics Wallet" button below\n' +
+      '2. Use the Mini App inside Telegram\n' +
+      '3. Manage balance, transactions, and premium\n\n' +
       `Your Wallet Address: BOTOMICS_${ctx.from.id}\n` +
-      'To buy BOM coins: Contact @BotomicsSupportBot';
-    
+      'To buy BOM coins: Contact @BotomicsSupportBot\n\n' +
+      'Features:\n' +
+      '• View balance & transaction history\n' +
+      '• Deposit & withdraw BOM coins\n' +
+      '• Transfer BOM to other users\n' +
+      '• Manage premium subscription';
+
     await ctx.reply(message, keyboard);
-    
-  } catch (error) {
+
+} catch (error) {
     console.error('❌ Open wallet error:', error);
     
     // Simple fallback without markdown
