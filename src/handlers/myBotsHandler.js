@@ -1,0 +1,132 @@
+﻿const { Markup } = require('telegraf');
+const { Bot, Admin } = require('../models');
+const { escapeMarkdown } = require('../utils/helpers');
+
+const myBotsHandler = async (ctx) => {
+  try {
+    const userId = ctx.from.id;
+    console.log(`🔍 DEBUG myBotsHandler: Loading bots for user ${userId}`);
+    
+    // Get bots where user is owner
+    const ownedBots = await Bot.findAll({
+      where: { owner_id: userId },
+      order: [['created_at', 'DESC']]
+    });
+    
+    console.log(`🔍 DEBUG: Found ${ownedBots.length} owned bots`);
+    ownedBots.forEach(bot => {
+      console.log(`   OWNED: ${bot.bot_name} (ID: ${bot.id})`);
+    });
+    
+    // Get admin records
+    const adminRecords = await Admin.findAll({
+      where: { admin_user_id: userId }
+    });
+    
+    console.log(`🔍 DEBUG: Found ${adminRecords.length} admin records`);
+    adminRecords.forEach(record => {
+      console.log(`   ADMIN RECORD: Bot ID: ${record.bot_id}`);
+    });
+    
+    // Get bot IDs from admin records (excluding owned bots)
+    const adminBotIds = adminRecords
+      .map(record => record.bot_id)
+      .filter(botId => {
+        // EXCLUDE bots where user is already owner
+        const isOwner = ownedBots.some(ownedBot => ownedBot.id === botId);
+        if (isOwner) {
+          console.log(`   EXCLUDING bot ${botId} - user is owner`);
+        }
+        return !isOwner;
+      });
+    
+    console.log(`🔍 DEBUG: Admin bot IDs after filtering: ${adminBotIds.join(', ')}`);
+    
+    // Fetch only non-owned admin bots
+    const adminBots = adminBotIds.length > 0 ? await Bot.findAll({
+      where: { 
+        id: adminBotIds
+      }
+    }) : [];
+    
+    console.log(`🔍 DEBUG: Found ${adminBots.length} admin-only bots`);
+    adminBots.forEach(bot => {
+      console.log(`   ADMIN: ${bot.bot_name} (ID: ${bot.id})`);
+    });
+    
+    // Combine - no duplicates possible now
+    const allBots = [...ownedBots, ...adminBots];
+    
+    console.log(`🔍 DEBUG: Final unique bots: ${allBots.length}`);
+    allBots.forEach(bot => {
+      const isOwner = bot.owner_id === userId;
+      console.log(`   FINAL: ${bot.bot_name} (ID: ${bot.id}) - Owner: ${isOwner}`);
+    });
+    
+    if (allBots.length === 0) {
+      // Use HTML parsing for simple messages to avoid Markdown issues
+      const message = `📭 <b>You don't have any bots yet!</b>\n\n` +
+        `Create your first bot to get started.`;
+      
+      return await ctx.reply(message, {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
+          [Markup.button.callback('❓ How to Create', 'help')]
+        ])
+      });
+    }
+    
+    // Build message with PROPER MarkdownV2 escaping
+    let message = `🤖 <b>Your Bots</b>\n\n` +
+      `<b>Total:</b> ${allBots.length} bots\n\n`;
+    
+    allBots.forEach((bot, index) => {
+      const isOwner = bot.owner_id === userId;
+      const status = bot.is_active ? '✅ Active' : '❌ Inactive';
+      
+      // Escape ALL dynamic content for HTML parsing
+      const safeBotName = escapeMarkdown(bot.bot_name);
+      const safeBotUsername = escapeMarkdown(bot.bot_username);
+      
+      message += `<b>${index + 1}. ${safeBotName}</b>\n` +
+        `@${safeBotUsername} | ${status} | ${isOwner ? '👑 Owner' : '👥 Admin'}\n\n`;
+    });
+    
+    message += `<b>🎯 Management Instructions:</b>\n` +
+      `• Go to each mini\\-bot and use /dashboard\n` +
+      `• View messages, send broadcasts, manage admins\n` +
+      `• All features available directly in mini\\-bots\n\n` +
+      `<b>💡 Tip:</b> Use the Menu for quick access!`;
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('🚀 Create New Bot', 'create_bot')],
+      [Markup.button.callback('🔄 Refresh', 'my_bots')],
+      [Markup.button.callback('❓ Help', 'help')]
+    ]);
+    
+    // Use HTML parsing instead of Markdown to avoid formatting issues
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      ...keyboard
+    });
+    
+  } catch (error) {
+    console.error('My bots error:', error);
+    
+    // Fallback to plain text if HTML parsing also fails
+    try {
+      await ctx.reply(
+        '❌ Error loading bots. Please try again.',
+        Markup.inlineKeyboard([
+          [Markup.button.callback('🔄 Try Again', 'my_bots')],
+          [Markup.button.callback('🚀 Create Bot', 'create_bot')]
+        ])
+      );
+    } catch (fallbackError) {
+      console.error('Fallback error:', fallbackError);
+    }
+  }
+};
+
+module.exports = { myBotsHandler };

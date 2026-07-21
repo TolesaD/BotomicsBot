@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Botomics Wallet</title>
+    <meta name="ngrok-skip-browser-warning" content="true">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <style>
+        /* Critical inline styles */
+        .hidden {
+            display: none !important;
+        }
+        
+        .telegram-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        /* Compact layout fixes */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        /* Make header more compact */
+        .header {
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .user-info {
+            font-size: 14px;
+            padding: 8px;
+            margin-top: 5px;
+        }
+        
+        /* Make balance card more compact */
+        .balance-card {
+            padding: 15px !important;
+            margin-bottom: 15px;
+            min-height: auto !important;
+        }
+        
+        .balance-header h2 {
+            font-size: 16px;
+        }
+        
+        .balance-amount {
+            font-size: 32px;
+            margin: 15px 0 10px 0;
+            min-height: 50px;
+        }
+        
+        .balance-details {
+            font-size: 13px;
+        }
+        
+        .wallet-actions {
+            margin-top: 12px;
+        }
+        
+        /* Make quick actions visible */
+        .quick-actions {
+            margin: 15px 0;
+            flex-shrink: 0;
+        }
+        
+        .quick-actions h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .action-btn {
+            padding: 12px 5px;
+            min-height: 75px;
+            font-size: 12px;
+        }
+        
+        .action-btn span:first-child {
+            font-size: 22px;
+            margin-bottom: 5px;
+        }
+        
+        /* Ensure all content fits */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 20px;
+        }
+        
+        /* Footer */
+        .footer {
+            margin-top: 20px;
+            padding: 15px 0;
+            font-size: 12px;
+        }
+        
+        /* Responsive fixes */
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .action-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+            
+            .balance-amount {
+                font-size: 28px;
+            }
+            
+            .header h1 {
+                font-size: 22px;
+            }
+            
+            .card {
+                padding: 15px !important;
+            }
+            
+            .balance-card {
+                padding: 12px !important;
+            }
+        }
+        
+        @media (max-height: 700px) {
+            .balance-card {
+                padding: 12px !important;
+            }
+            
+            .balance-amount {
+                font-size: 28px;
+                margin: 10px 0 5px 0;
+            }
+            
+            .quick-actions {
+                margin: 10px 0;
+            }
+            
+            .action-btn {
+                padding: 10px 5px;
+                min-height: 70px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Non-Telegram Warning -->
+    <div id="nonTelegramWarning" class="telegram-warning hidden">
+        <h3>⚠️ Telegram Mini App Required</h3>
+        <p>This wallet works only within Telegram. Please open it from:</p>
+        <ol style="text-align: left; margin: 15px auto; max-width: 300px;">
+            <li>Open @BotomicsBot</li>
+            <li>Type /wallet command</li>
+            <li>Click "Open Botomics Wallet"</li>
+        </ol>
+        <p><strong>Or use the menu button (≡) in the bot</strong></p>
+        <p><strong>Current URL:</strong> <span id="currentUrl">Loading...</span></p>
+    </div>
+
+    <!-- Main Wallet Container -->
+    <div class="container" id="mainContainer" style="display: none;">
+        <!-- Header -->
+        <header class="header">
+            <h1>💰 Botomics Wallet</h1>
+            <div class="user-info" id="userInfo">
+                <span>Loading user info...</span>
+                <br>
+                <small id="userId">ID: --</small>
+            </div>
+        </header>
+
+        <!-- Balance Card -->
+        <div class="card balance-card">
+            <div class="balance-header">
+                <h2>Your Balance</h2>
+                <button class="refresh-btn" onclick="refreshData()" id="refreshBtn">🔄</button>
+            </div>
+            <div class="balance-amount" id="balanceAmount">
+                <div class="loading">Loading balance...</div>
+            </div>
+            <div class="balance-details">
+                <div class="currency-rate">1 BOM = $1.00 USD</div>
+                <div class="wallet-status" id="walletStatus"></div>
+            </div>
+            <div class="wallet-actions">
+                <button class="btn-small" onclick="copyWalletAddress()" id="copyAddressBtn">
+                    📋 Copy Wallet Address
+                </button>
+            </div>
+        </div>
+
+        <!-- Wallet Status Warning -->
+        <div id="walletWarning" class="hidden"></div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <h3>Quick Actions</h3>
+            <div class="action-grid">
+                <button class="action-btn" onclick="showDeposit()" id="depositBtn">
+                    <span>💳</span>
+                    <span>Deposit</span>
+                </button>
+                <button class="action-btn" onclick="showWithdraw()" id="withdrawBtn">
+                    <span>📤</span>
+                    <span>Withdraw</span>
+                </button>
+                <button class="action-btn" onclick="showTransfer()" id="transferBtn">
+                    <span>🔄</span>
+                    <span>Transfer</span>
+                </button>
+                <button class="action-btn" onclick="showHistory()" id="historyBtn">
+                    <span>📊</span>
+                    <span>History</span>
+                </button>
+                <button class="action-btn" onclick="showPremium()" id="premiumBtn">
+                    <span>🎫</span>
+                    <span>Premium</span>
+                </button>
+                <button class="action-btn" onclick="showSupport()" id="supportBtn">
+                    <span>🆘</span>
+                    <span>Support</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Deposit Section -->
+        <div class="card deposit-section hidden" id="depositSection">
+            <h3>💳 Deposit BOM</h3>
+            <div class="deposit-info">
+                <p><strong>Minimum Deposit:</strong> 5 BOM ($5.00)</p>
+                <p><strong>Processing Time:</strong> 1-6 hours after verification</p>
+                <p><strong>Rate:</strong> 1 BOM = $1.00 USD</p>
+                <p><strong>To Buy BOM:</strong> Contact @BotomicsSupportBot</p>
+            </div>
+            <div class="instructions">
+                <h4>How to Deposit:</h4>
+                <ol>
+                    <li>Contact @BotomicsSupportBot to buy BOM</li>
+                    <li>Specify amount you want to purchase</li>
+                    <li>Follow payment instructions provided</li>
+                    <li>Submit payment proof after payment</li>
+                    <li>Coins added after admin verification</li>
+                </ol>
+                <div class="payment-address">
+                    <strong>For Reference:</strong>
+                    <code id="paymentAddress">BOTOMICS_USER_<span id="userRef">USER_ID</span></code>
+                    <button class="btn-copy" onclick="copyPaymentAddress()">📋 Copy</button>
+                </div>
+                <div class="telegram-only">
+                    <p><strong>📱 Quick Action:</strong></p>
+                    <button class="btn-primary" onclick="contactForBOM()">
+                        💬 Contact @BotomicsSupportBot
+                    </button>
+                </div>
+            </div>
+            <div class="deposit-actions">
+                <button class="btn-primary" onclick="showDepositProofForm()" id="submitProofBtn">
+                    📸 I Already Paid - Submit Proof
+                </button>
+                <button class="btn-secondary" onclick="hideAllSections()">
+                    🔙 Back to Wallet
+                </button>
+            </div>
+        </div>
+
+        <!-- Deposit Proof Form -->
+        <div class="card hidden" id="depositProofSection">
+            <h3>📸 Submit Deposit Proof</h3>
+            <p class="form-info">Only submit proof after you've made payment to @BotomicsSupportBot</p>
+            
+            <div class="deposit-form">
+                <div class="form-group">
+                    <label for="depositAmount">Amount in BOM:</label>
+                    <input type="number" id="depositAmount" placeholder="Enter amount" min="5" step="0.01" required>
+                    <small>Minimum: 5 BOM ($5.00)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="depositDescription">Transaction Reference (optional):</label>
+                    <input type="text" id="depositDescription" placeholder="e.g., PayPal Transaction ID #ABC123">
+                </div>
+
+                <div class="form-group">
+                    <label for="depositProof">Proof of Payment (screenshot/photo):</label>
+                    <input type="file" id="depositProof" accept="image/*, .pdf, .png, .jpg, .jpeg" required>
+                    <small>Upload clear screenshot of your payment transaction (Max: 5MB)</small>
+                </div>
+
+                <div class="form-note">
+                    <p>⚠️ <strong>Important:</strong></p>
+                    <ul>
+                        <li>Only submit after payment confirmation</li>
+                        <li>Proof must show transaction details</li>
+                        <li>Processing time: 1-6 hours</li>
+                        <li>You'll be notified when approved</li>
+                    </ul>
+                </div>
+
+                <button class="btn-primary" onclick="submitDepositProof()" id="submitDepositBtn">
+                    📤 Submit for Verification
+                </button>
+            </div>
+            
+            <button class="btn-secondary" onclick="showDeposit()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Withdraw Section -->
+        <div class="card withdraw-section hidden" id="withdrawSection">
+            <h3>📤 Withdraw BOM</h3>
+            <div class="withdraw-info">
+                <p><strong>Minimum Withdrawal:</strong> 20 BOM ($20.00)</p>
+                <p><strong>Processing Time:</strong> 24 hours</p>
+                <p><strong>Fee:</strong> No fee for withdrawals</p>
+                <p><strong>Available Balance:</strong> <span id="availableBalance">Loading...</span> BOM</p>
+            </div>
+            
+            <div class="withdraw-methods">
+                <h4>Select Withdrawal Method:</h4>
+                <div class="method-grid">
+                    <button class="method-btn" onclick="selectWithdrawMethod('paypal')" id="paypalBtn">
+                        <span>💼</span>
+                        <span>PayPal</span>
+                    </button>
+                    <button class="method-btn" onclick="selectWithdrawMethod('crypto')" id="cryptoBtn">
+                        <span>₿</span>
+                        <span>Crypto</span>
+                    </button>
+                </div>
+            </div>
+            
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back to Wallet
+            </button>
+        </div>
+
+        <!-- Withdraw Request Form -->
+        <div class="card hidden" id="withdrawRequestSection">
+            <h3>📤 Request Withdrawal</h3>
+            <div class="withdraw-form">
+                <input type="hidden" id="withdrawMethod" value="paypal">
+                
+                <div class="form-group">
+                    <label for="withdrawAmount">Amount in BOM:</label>
+                    <input type="number" id="withdrawAmount" placeholder="Enter amount (minimum: 20)" min="20" step="1" required>
+                    <small>You'll receive: $<span id="withdrawUsd">0.00</span> USD</small>
+                </div>
+
+                <div class="form-group">
+                    <label id="withdrawDetailsLabel">PayPal Email:</label>
+                    <textarea id="withdrawDetails" placeholder="Enter your PayPal email address" rows="3" required></textarea>
+                    <small id="withdrawDetailsHint">Enter accurate payout details</small>
+                </div>
+
+                <div class="withdraw-summary">
+                    <p><strong>Summary:</strong></p>
+                    <p>Withdraw: <span id="summaryAmount">0</span> BOM</p>
+                    <p>Receive: $<span id="summaryUsd">0.00</span> USD</p>
+                    <p>Method: <span id="summaryMethod">PayPal</span></p>
+                    <p>Processing: 24 hours</p>
+                </div>
+
+                <button class="btn-primary" onclick="submitWithdrawalRequest()" id="submitWithdrawBtn">
+                    💰 Submit Withdrawal Request
+                </button>
+            </div>
+            
+            <button class="btn-secondary" onclick="showWithdraw()">
+                🔙 Back
+            </button>
+        </div>
+
+        <!-- Transfer Section -->
+        <div class="card hidden" id="transferSection">
+            <h3>🔄 Transfer BOM</h3>
+            <div class="transfer-info">
+                <p><strong>Transfer Fee:</strong> Free</p>
+                <p><strong>Available Balance:</strong> <span id="transferBalance">Loading...</span> BOM</p>
+                <p><strong>Instant Transfer:</strong> Yes, within platform</p>
+            </div>
+            
+            <div class="transfer-form">
+                <div class="form-group">
+                    <label for="receiverId">Receiver Telegram ID or @username:</label>
+                    <input type="text" id="receiverId" placeholder="Enter Telegram ID or username" required>
+                    <small>Find user ID from their Telegram profile</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="transferAmount">Amount in BOM:</label>
+                    <input type="number" id="transferAmount" placeholder="Enter amount" min="0.01" step="0.01" required>
+                    <small>Minimum: 0.01 BOM ($0.01)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="transferDescription">Description (optional):</label>
+                    <input type="text" id="transferDescription" placeholder="e.g., Payment for service, Gift, etc.">
+                </div>
+
+                <div class="transfer-note">
+                    <p>⚠️ <strong>Important:</strong></p>
+                    <ul>
+                        <li>Transfers are instant and irreversible</li>
+                        <li>Double-check receiver ID before sending</li>
+                        <li>Transfers can't be cancelled once sent</li>
+                        <li>Receiver must have a Botomics wallet</li>
+                    </ul>
+                </div>
+
+                <button class="btn-primary" onclick="submitTransfer()" id="submitTransferBtn">
+                    🔄 Send Transfer
+                </button>
+            </div>
+            
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back to Wallet
+            </button>
+        </div>
+
+        <!-- Transaction History -->
+        <div class="card history-section hidden" id="historySection">
+            <h3>📊 Transaction History</h3>
+            <div class="history-filters">
+                <select id="historyType" onchange="loadHistory()">
+                    <option value="all">All Transactions</option>
+                    <option value="deposit">Deposits</option>
+                    <option value="withdrawal">Withdrawals</option>
+                    <option value="transfer">Transfers</option>
+                    <option value="subscription">Subscriptions</option>
+                </select>
+                <select id="historyStatus" onchange="loadHistory()">
+                    <option value="all">All Status</option>
+                    <option value="completed">Completed</option>
+                    <option value="pending">Pending</option>
+                    <option value="failed">Failed</option>
+                </select>
+                <select id="historyPeriod" onchange="loadHistory()">
+                    <option value="7days">Last 7 Days</option>
+                    <option value="30days">Last 30 Days</option>
+                    <option value="90days">Last 90 Days</option>
+                    <option value="all">All Time</option>
+                </select>
+            </div>
+            
+            <div class="transactions-list" id="transactionsList">
+                <div class="loading">Loading transactions...</div>
+            </div>
+            
+            <div class="pagination" id="pagination">
+                <!-- Pagination will be inserted here -->
+            </div>
+            
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back to Wallet
+            </button>
+        </div>
+
+        <!-- Premium Section -->
+        <div class="card premium-section hidden" id="premiumSection">
+            <h3>🎫 Premium Subscription</h3>
+            <div class="premium-info">
+                <div class="current-tier" id="currentTier">
+                    Loading subscription status...
+                </div>
+                
+                <div class="premium-benefits">
+                    <h4>🎁 Premium Benefits:</h4>
+                    <ul>
+                        <li>✅ Unlimited bot creation (9999 bots)</li>
+                        <li>✅ Unlimited broadcasts per week</li>
+                        <li>✅ Unlimited co-admins per bot</li>
+                        <li>✅ Unlimited force-join channels</li>
+                        <li>✅ Enable donation system in bots</li>
+                        <li>✅ Ad-free experience</li>
+                        <li>✅ Priority 24/7 support</li>
+                        <li>✅ Early access to new features</li>
+                        <li>🎉 All features will be unlocked</li>
+                    </ul>
+                </div>
+                
+                <div class="pricing">
+                    <div class="price-card">
+                        <h4>Monthly Plan</h4>
+                        <div class="price">3 BOM</div>
+                        <div class="period">per month</div>
+                        <div class="usd-price">$3.00 USD</div>
+                        <button class="btn-primary" onclick="upgradeToPremium('monthly')" id="upgradeMonthlyBtn">
+                            💎 Upgrade Monthly
+                        </button>
+                    </div>
+                    
+                    <div class="price-card featured">
+                        <h4>Yearly Plan (Best Value)</h4>
+                        <div class="price">30 BOM</div>
+                        <div class="period">per year</div>
+                        <div class="usd-price">$30.00 USD</div>
+                        <div class="savings">Save 2 months!</div>
+                        <button class="btn-primary" onclick="upgradeToPremium('yearly')" id="upgradeYearlyBtn">
+                            🏆 Upgrade Yearly
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="subscription-info" id="subscriptionInfo">
+                    <!-- Subscription details will be inserted here -->
+                </div>
+                
+                <div class="premium-actions" id="premiumActions">
+                    <!-- Upgrade/Cancel buttons will be inserted here -->
+                </div>
+            </div>
+            
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back to Wallet
+            </button>
+        </div>
+
+        <!-- Support Section -->
+        <div class="card support-section hidden" id="supportSection">
+            <h3>🆘 Support & Help</h3>
+            <div class="support-options">
+                <div class="support-card">
+                    <h4>🤖 Bot Creation</h4>
+                    <p>Issues with creating or managing bots</p>
+                    <button class="btn-small" id="supportBotCreation">
+                        Get Help
+                    </button>
+                </div>
+                
+                <div class="support-card">
+                    <h4>💰 Wallet Issues</h4>
+                    <p>Deposit, withdrawal, or transfer problems</p>
+                    <button class="btn-small" id="supportWalletIssues">
+                        Get Help
+                    </button>
+                </div>
+                
+                <div class="support-card">
+                    <h4>🎫 Premium</h4>
+                    <p>Subscription, billing, or premium features</p>
+                    <button class="btn-small" id="supportPremium">
+                        Get Help
+                    </button>
+                </div>
+                
+                <div class="support-card">
+                    <h4>🛒 Buy BOM</h4>
+                    <p>Purchase BOM coins or payment issues</p>
+                    <button class="btn-small" id="supportBuyBOM">
+                        Contact @BotomicsSupportBot
+                    </button>
+                </div>
+            </div>
+            
+            <div class="faq">
+                <h4>📚 Frequently Asked Questions</h4>
+                <div class="faq-item">
+                    <button class="faq-question">How do I buy BOM coins?</button>
+                    <div class="faq-answer hidden">
+                        <p>Contact @BotomicsSupportBot directly. They will guide you through the purchase process.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question">What's the minimum withdrawal?</button>
+                    <div class="faq-answer hidden">
+                        <p>Minimum withdrawal is 20 BOM ($20.00). Processing time is 24 hours.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question">Can I cancel Premium?</button>
+                    <div class="faq-answer hidden">
+                        <p>Yes, you can cancel anytime. You keep premium features until the end of your billing period.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn-secondary" onclick="hideAllSections()">
+                🔙 Back to Wallet
+            </button>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-links">
+                <a href="javascript:void(0)" onclick="showSupport()">🆘 Support</a>
+                <a href="javascript:void(0)" onclick="showTerms()">📋 Terms</a>
+                <a href="javascript:void(0)" onclick="showPrivacy()">🔒 Privacy</a>
+            </div>
+            <p class="copyright">
+                Powered by <strong>Botomics</strong> • Version 2.0.0 • <span id="currentYear">2024</span>
+            </p>
+            <p class="disclaimer">
+                Botomics (BOM) is a proprietary digital currency. 1 BOM = $1.00 USD fixed rate.
+            </p>
+        </footer>
+    </div>
+
+    <!-- Load main app.js -->
+    <script src="app.js"></script>
+    
+    <!-- Simple inline initialization -->
+    <script>
+        // Set current year
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+        document.getElementById('currentUrl').textContent = window.location.href;
+        
+        // Show non-Telegram warning if not in Telegram
+        if (!window.Telegram?.WebApp) {
+            document.getElementById('nonTelegramWarning').classList.remove('hidden');
+            document.getElementById('mainContainer').style.display = 'none';
+        } else {
+            // Telegram Web App detected
+            document.getElementById('nonTelegramWarning').classList.add('hidden');
+            document.getElementById('mainContainer').style.display = 'block';
+        }
+        
+        // FAQ toggle function
+        document.addEventListener('DOMContentLoaded', function() {
+            const faqQuestions = document.querySelectorAll('.faq-question');
+            faqQuestions.forEach(question => {
+                question.addEventListener('click', function() {
+                    const answer = this.nextElementSibling;
+                    if (answer && answer.classList.contains('faq-answer')) {
+                        answer.classList.toggle('hidden');
+                    }
+                });
+            });
+            
+            // Initialize form event listeners
+            const withdrawAmountInput = document.getElementById('withdrawAmount');
+            if (withdrawAmountInput) {
+                withdrawAmountInput.addEventListener('input', function() {
+                    const amount = parseFloat(this.value) || 0;
+                    if (document.getElementById('withdrawUsd')) {
+                        document.getElementById('withdrawUsd').textContent = amount.toFixed(2);
+                    }
+                    if (document.getElementById('summaryAmount')) {
+                        document.getElementById('summaryAmount').textContent = amount;
+                    }
+                    if (document.getElementById('summaryUsd')) {
+                        document.getElementById('summaryUsd').textContent = amount.toFixed(2);
+                    }
+                });
+            }
+        });
+        
+        // Simple helper functions
+        function showTerms() {
+            const tg = window.Telegram?.WebApp;
+            const terms = `📋 Botomics Wallet Terms\n\n1 BOM = $1.00 USD fixed rate\nMinimum deposit: 5 BOM ($5.00)\nMinimum withdrawal: 20 BOM ($20.00)\nTransfers are instant and irreversible\nContact @BotomicsSupportBot for support`;
+            
+            if (tg) {
+                tg.showPopup({
+                    title: 'Terms of Service',
+                    message: terms,
+                    buttons: [{ type: 'ok' }]
+                });
+            } else {
+                alert(terms);
+            }
+        }
+        
+        function showPrivacy() {
+            const tg = window.Telegram?.WebApp;
+            const privacy = `🔒 Privacy Policy\n\nWe store your wallet balance and transaction history securely.\nTransaction data is encrypted and secure.\nContact @BotomicsSupportBot for data deletion requests.`;
+            
+            if (tg) {
+                tg.showPopup({
+                    title: 'Privacy Policy',
+                    message: privacy,
+                    buttons: [{ type: 'ok' }]
+                });
+            } else {
+                alert(privacy);
+            }
+        }
+    </script>
+</body>
+</html>

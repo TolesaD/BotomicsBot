@@ -1,0 +1,9 @@
+# wrangler.toml
+name = "botomics-webhook"
+main = "workers/index.js"
+compatibility_date = "2026-07-19"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables
+[vars]
+RACKNERD_URL = "http://104.168.114.178:3000"
